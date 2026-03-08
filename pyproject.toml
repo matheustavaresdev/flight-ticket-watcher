@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "flight-watcher"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fast-flights @ git+https://github.com/AWeirdDev/flights.git",
+    "patchright",
+]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flight_watcher"]
