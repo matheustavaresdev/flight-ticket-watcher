@@ -83,73 +83,18 @@ def search_latam_roundtrip(
     headless: bool = False,
 ) -> tuple[dict | None, dict | None]:
     """
-    Search LATAM round-trip flights and capture both outbound and return BFF responses
-    from a single page load.
+    Search LATAM round-trip flights via two separate page loads.
+
+    The LATAM website only fires the return BFF request after the user selects
+    an outbound flight, so a single page load only yields outbound data.
+    We work around this by loading origin->destination for outbound and
+    destination->origin (with swapped dates) for the return leg.
 
     Returns (outbound_data, return_data). Either may be None if not captured.
     """
-    start = time.time()
-    captured_responses: list[dict] = []
-
-    def on_response(response):
-        if "bff/air-offers/v2/offers/search" in response.url and response.status == 200:
-            try:
-                captured_responses.append(response.json())
-            except Exception as e:
-                print(f"[WARNING] BFF response matched but failed to parse: {e}")
-
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=headless,
-            channel="chrome",
-        )
-        page = browser.new_page(no_viewport=True)
-        page.on("response", on_response)
-
-        url = _build_latam_url(origin, destination, outbound, inbound)
-
-        try:
-            with page.expect_response(
-                lambda r: "bff/air-offers/v2/offers/search" in r.url and r.status == 200,
-                timeout=30_000,
-            ):
-                page.goto(url, wait_until="domcontentloaded")
-        except Exception as e:
-            print(f"Timeout waiting for BFF response: {e}")
-
-        # Wait up to 5s for the second BFF response (return leg)
-        wait_start = time.time()
-        while len(captured_responses) < 2 and (time.time() - wait_start) < 5:
-            time.sleep(0.25)
-
-        browser.close()
-
-    elapsed = time.time() - start
-    print(f"Search completed in {elapsed:.1f}s — captured {len(captured_responses)} BFF response(s)")
-
-    if not captured_responses:
-        return None, None
-
-    # Identify legs by matching the origin IATA in the first offer of each response
-    outbound_data: dict | None = None
-    return_data: dict | None = None
-    for resp in captured_responses:
-        content = resp.get("content", [])
-        if not content:
-            continue
-        resp_origin = content[0].get("summary", {}).get("origin", {}).get("iataCode", "")
-        if resp_origin.upper() == origin.upper():
-            outbound_data = resp
-        else:
-            return_data = resp
-
-    # Fallback: assign by capture order if IATA matching didn't work
-    if outbound_data is None or return_data is None:
-        if outbound_data is None and captured_responses:
-            outbound_data = captured_responses[0]
-        if return_data is None and len(captured_responses) > 1:
-            return_data = captured_responses[1]
-
+    outbound_data = search_latam(origin, destination, outbound, inbound, headless=headless)
+    time.sleep(1)
+    return_data = search_latam(destination, origin, inbound, outbound, headless=headless)
     return outbound_data, return_data
 
 
