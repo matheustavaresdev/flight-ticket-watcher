@@ -28,6 +28,7 @@ def search_latam(
             try:
                 captured["data"] = response.json()
                 captured["status"] = response.status
+                captured.pop("error", None)
             except Exception as e:
                 captured["error"] = str(e)
                 captured["status"] = response.status
