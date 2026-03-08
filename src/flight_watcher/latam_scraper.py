@@ -7,6 +7,17 @@ from pathlib import Path
 from patchright.sync_api import sync_playwright
 
 
+def _build_latam_url(origin: str, destination: str, outbound: str, inbound: str) -> str:
+    return (
+        f"https://www.latamairlines.com/br/pt/oferta-voos"
+        f"?origin={origin}&destination={destination}"
+        f"&outbound={outbound}T00:00:00.000Z"
+        f"&inbound={inbound}T00:00:00.000Z"
+        f"&adt=1&chd=0&inf=0&trip=RT&cabin=Economy"
+        f"&redemption=false&sort=RECOMMENDED"
+    )
+
+
 def search_latam(
     origin: str,
     destination: str,
@@ -41,14 +52,7 @@ def search_latam(
         page = browser.new_page(no_viewport=True)
         page.on("response", on_response)
 
-        url = (
-            f"https://www.latamairlines.com/br/pt/oferta-voos"
-            f"?origin={origin}&destination={destination}"
-            f"&outbound={outbound}T00:00:00.000Z"
-            f"&inbound={inbound}T00:00:00.000Z"
-            f"&adt=1&chd=0&inf=0&trip=RT&cabin=Economy"
-            f"&redemption=false&sort=RECOMMENDED"
-        )
+        url = _build_latam_url(origin, destination, outbound, inbound)
 
         try:
             with page.expect_response(
@@ -88,7 +92,7 @@ def search_latam_roundtrip(
     captured_responses: list[dict] = []
 
     def on_response(response):
-        if "bff/air-offers/v2/offers/search" in response.url:
+        if "bff/air-offers/v2/offers/search" in response.url and response.status == 200:
             try:
                 captured_responses.append(response.json())
             except Exception as e:
@@ -102,14 +106,7 @@ def search_latam_roundtrip(
         page = browser.new_page(no_viewport=True)
         page.on("response", on_response)
 
-        url = (
-            f"https://www.latamairlines.com/br/pt/oferta-voos"
-            f"?origin={origin}&destination={destination}"
-            f"&outbound={outbound}T00:00:00.000Z"
-            f"&inbound={inbound}T00:00:00.000Z"
-            f"&adt=1&chd=0&inf=0&trip=RT&cabin=Economy"
-            f"&redemption=false&sort=RECOMMENDED"
-        )
+        url = _build_latam_url(origin, destination, outbound, inbound)
 
         try:
             with page.expect_response(
