@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.flight_watcher.latam_scraper import parse_offers, search_latam
+from src.flight_watcher.latam_scraper import parse_offers, search_latam, search_latam_roundtrip
 
 
 def find_cheapest_flights(offers: list[dict], top_n: int = 5) -> list[dict]:
@@ -52,37 +52,91 @@ def display_flight(rank: int, offer: dict) -> None:
     print(f"  {'─' * 40}")
 
 
+def display_leg(label: str, cheapest: list[dict]) -> None:
+    """Print a section header and all flights for a leg."""
+    print(f"\n{'#' * 60}")
+    print(f"  {label}")
+    print(f"{'#' * 60}")
+    for i, offer in enumerate(cheapest, 1):
+        display_flight(i, offer)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Find cheapest LATAM flights")
     parser.add_argument("origin", help="Origin IATA code (e.g. FOR)")
     parser.add_argument("destination", help="Destination IATA code (e.g. GRU)")
     parser.add_argument("outbound", help="Outbound date (YYYY-MM-DD)")
-    parser.add_argument("inbound", help="Return date (YYYY-MM-DD)")
+    parser.add_argument("inbound", nargs="?", default=None, help="Return date (YYYY-MM-DD), omit for one-way")
     parser.add_argument("-n", "--top", type=int, default=5, help="Number of cheapest flights to show (default: 5)")
     args = parser.parse_args()
 
+    is_roundtrip = args.inbound is not None
+
     print(f"\nSearching LATAM: {args.origin} -> {args.destination}")
-    print(f"Outbound: {args.outbound}  |  Return: {args.inbound}\n")
+    if is_roundtrip:
+        print(f"Outbound: {args.outbound}  |  Return: {args.inbound}\n")
+    else:
+        print(f"Outbound: {args.outbound}  (one-way)\n")
 
-    data = search_latam(args.origin, args.destination, args.outbound, args.inbound)
-    if not data:
-        print("Failed to fetch flight data.")
+    if is_roundtrip:
+        outbound_data, return_data = search_latam_roundtrip(
+            args.origin, args.destination, args.outbound, args.inbound
+        )
+    else:
+        # One-way: pass outbound date as inbound (LATAM still returns outbound offers for same-day RT)
+        outbound_data = search_latam(args.origin, args.destination, args.outbound, args.outbound)
+        return_data = None
+
+    if not outbound_data:
+        print("Failed to fetch outbound flight data.")
         sys.exit(1)
 
-    offers = parse_offers(data)
-    if not offers:
-        print("No flights found.")
+    outbound_offers = parse_offers(outbound_data)
+    if not outbound_offers:
+        print("No outbound flights found.")
         sys.exit(1)
 
-    cheapest = find_cheapest_flights(offers, top_n=args.top)
-    if not cheapest:
-        print("No flights with pricing data found.")
+    cheapest_outbound = find_cheapest_flights(outbound_offers, top_n=args.top)
+    if not cheapest_outbound:
+        print("No outbound flights with pricing data found.")
         sys.exit(1)
 
-    print(f"\nFound {len(offers)} flights total. Top {len(cheapest)} cheapest:\n")
+    print(f"\nFound {len(outbound_offers)} outbound flights total.")
+    display_leg(f"OUTBOUND: {args.origin} \u2192 {args.destination} ({args.outbound})", cheapest_outbound)
 
-    for i, offer in enumerate(cheapest, 1):
-        display_flight(i, offer)
+    if is_roundtrip:
+        if not return_data:
+            print("\n[WARNING] Return flight data not captured. Showing outbound only.")
+        else:
+            return_offers = parse_offers(return_data)
+            if not return_offers:
+                print(f"\n[WARNING] No return flights found in captured data.")
+            else:
+                cheapest_return = find_cheapest_flights(return_offers, top_n=args.top)
+                print(f"\nFound {len(return_offers)} return flights total.")
+
+                if not cheapest_return:
+                    print("No return flights with pricing data found.")
+                else:
+                    display_leg(f"RETURN: {args.destination} \u2192 {args.origin} ({args.inbound})", cheapest_return)
+
+                    # Round-trip summary
+                    best_out_price = cheapest_outbound[0].get("_sort_price")
+                    best_ret_price = cheapest_return[0].get("_sort_price")
+                    currency = next(
+                        (b["currency"] for b in cheapest_outbound[0]["brands"] if b["id"] == "SL" and b["currency"]),
+                        "",
+                    )
+                    if best_out_price is not None and best_ret_price is not None:
+                        total = best_out_price + best_ret_price
+                        print(f"\n{'=' * 60}")
+                        print(f"  ROUND-TRIP SUMMARY")
+                        print(f"{'=' * 60}")
+                        print(f"  Cheapest outbound (LIGHT): {currency} {best_out_price:>10,.2f}")
+                        print(f"  Cheapest return   (LIGHT): {currency} {best_ret_price:>10,.2f}")
+                        print(f"  {'─' * 40}")
+                        print(f"  TOTAL ROUND-TRIP:          {currency} {total:>10,.2f}")
+                        print(f"{'=' * 60}")
 
     print()
 
