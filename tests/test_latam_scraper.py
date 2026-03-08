@@ -105,11 +105,12 @@ def _setup_roundtrip_mocks(mock_pw, outbound_resp, return_resp=None):
 
     mock_page.expect_response.side_effect = [first_expect, second_expect]
 
-    # Mock locator chain for cookie dismiss, card click, fare select
+    # Mock locator chain for cookie dismiss, card click, cabin expand, fare select
     mock_cookie_locator = MagicMock()
     mock_cookie_locator.count.return_value = 1
 
     mock_card_locator = MagicMock()
+    mock_cabin_locator = MagicMock()  # cabin-grouping-tabs-0 button
     mock_fare_locator = MagicMock()
 
     def locator_side_effect(selector):
@@ -117,6 +118,8 @@ def _setup_roundtrip_mocks(mock_pw, outbound_resp, return_resp=None):
             return mock_cookie_locator
         elif "wrapper-card-flight" in selector:
             return mock_card_locator
+        elif "cabin-grouping-tabs" in selector:
+            return mock_cabin_locator
         elif "bundle-detail" in selector:
             return mock_fare_locator
         return MagicMock()
@@ -148,6 +151,7 @@ def test_roundtrip_captures_both_legs(mock_pw):
     # Verify the interaction sequence
     mock_page.goto.assert_called_once()
     mock_page.locator.assert_any_call('[data-testid="wrapper-card-flight-0"]')
+    mock_page.locator.assert_any_call('[data-testid="cabin-grouping-tabs-0"] button')
     mock_page.locator.assert_any_call('[data-testid="bundle-detail-0-flight-select"]')
     mock_page.get_by_role.assert_called_once_with("button", name="Continuar")
 

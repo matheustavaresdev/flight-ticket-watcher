@@ -140,7 +140,7 @@ def search_latam_roundtrip(
             except Exception:
                 pass
 
-        # Step 3: Click first flight card to expand fare options
+        # Step 3: Click first flight card to show cabin selection
         try:
             page.locator('[data-testid="wrapper-card-flight-0"]').click(timeout=10_000)
             page.wait_for_timeout(2000)
@@ -151,8 +151,20 @@ def search_latam_roundtrip(
             print(f"Search completed in {elapsed:.1f}s")
             return outbound_data, None
 
-        # Step 4: Select the Light fare
+        # Step 4: Expand Economy cabin section (first button inside cabin-grouping-tabs-0)
         try:
+            page.locator('[data-testid="cabin-grouping-tabs-0"] button').first.click(timeout=10_000)
+            page.wait_for_timeout(1000)
+        except Exception as e:
+            print(f"Failed to expand Economy cabin: {e}")
+            browser.close()
+            elapsed = time.time() - start
+            print(f"Search completed in {elapsed:.1f}s")
+            return outbound_data, None
+
+        # Step 5: Select the Light fare
+        try:
+            page.locator('[data-testid="bundle-detail-0-flight-select"]').wait_for(state="visible", timeout=30_000)
             page.locator('[data-testid="bundle-detail-0-flight-select"]').click(timeout=10_000)
             page.wait_for_timeout(1000)
         except Exception as e:
@@ -162,7 +174,7 @@ def search_latam_roundtrip(
             print(f"Search completed in {elapsed:.1f}s")
             return outbound_data, None
 
-        # Step 5: Click "Continuar" and wait for return BFF
+        # Step 6: Click "Continuar" and wait for return BFF
         try:
             continuar = page.get_by_role("button", name="Continuar")
             with page.expect_response(
