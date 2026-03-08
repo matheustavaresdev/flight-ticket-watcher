@@ -107,7 +107,7 @@ def print_offers(offers: list[dict]) -> None:
         brands_str = " | ".join(
             f"{b['name']}: {b['currency']} {b['price']:.2f}"
             for b in offer["brands"]
-            if b["price"] is not None
+            if b["price"] is not None and b["name"] is not None and b["currency"] is not None
         )
         stops_str = "direct" if offer["stops"] == 0 else f"{offer['stops']} stop(s)"
         print(
@@ -120,7 +120,7 @@ def print_offers(offers: list[dict]) -> None:
 
 def save_response(data: dict, origin: str, destination: str) -> Path:
     """Save raw JSON response to output/ directory."""
-    output_dir = Path("output")
+    output_dir = Path(__file__).parent.parent.parent / "output"
     output_dir.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     filename = output_dir / f"latam-{origin}-{destination}-{timestamp}.json"
