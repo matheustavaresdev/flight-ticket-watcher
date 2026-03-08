@@ -1,4 +1,7 @@
-def print_results(results: list, header: str = "") -> None:
+from flight_watcher.models import FlightResult
+
+
+def print_results(results: list[FlightResult], header: str = "") -> None:
     """Print flight results in a readable tabular format."""
     if header:
         print(f"\n{header}")

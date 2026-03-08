@@ -91,3 +91,4 @@ def test_map_flight_calculates_stops():
 
     assert results_direct[0].stops == 0
     assert results_connecting[0].stops == 1
+    assert results_connecting[0].duration_min == 270

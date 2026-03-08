@@ -79,7 +79,7 @@ def _map_flight_to_results(
                     date=date,
                     price=flight.price,
                     airline=airline,
-                    duration_min=flight.flights[0].duration,
+                    duration_min=sum(seg.duration for seg in flight.flights),
                     stops=stops,
                     departure_time=departure_time,
                     arrival_time=arrival_time,
