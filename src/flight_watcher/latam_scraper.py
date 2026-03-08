@@ -49,13 +49,12 @@ def search_latam(
             f"&redemption=false&sort=RECOMMENDED"
         )
 
-        page.goto(url, wait_until="domcontentloaded")
-
         try:
-            page.wait_for_response(
+            with page.expect_response(
                 lambda r: "bff/air-offers/v2/offers/search" in r.url and r.status == 200,
                 timeout=30_000,
-            )
+            ):
+                page.goto(url, wait_until="domcontentloaded")
         except Exception as e:
             print(f"Timeout waiting for BFF response: {e}")
 
