@@ -91,8 +91,8 @@ def search_latam_roundtrip(
         if "bff/air-offers/v2/offers/search" in response.url:
             try:
                 captured_responses.append(response.json())
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[WARNING] BFF response matched but failed to parse: {e}")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -147,9 +147,11 @@ def search_latam_roundtrip(
             return_data = resp
 
     # Fallback: assign by capture order if IATA matching didn't work
-    if outbound_data is None and return_data is None:
-        outbound_data = captured_responses[0] if captured_responses else None
-        return_data = captured_responses[1] if len(captured_responses) > 1 else None
+    if outbound_data is None or return_data is None:
+        if outbound_data is None and captured_responses:
+            outbound_data = captured_responses[0]
+        if return_data is None and len(captured_responses) > 1:
+            return_data = captured_responses[1]
 
     return outbound_data, return_data
 

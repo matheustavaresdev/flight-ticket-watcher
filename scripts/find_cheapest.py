@@ -83,6 +83,7 @@ def main():
             args.origin, args.destination, args.outbound, args.inbound
         )
     else:
+        # One-way: pass outbound date as inbound (LATAM still returns outbound offers for same-day RT)
         outbound_data = search_latam(args.origin, args.destination, args.outbound, args.outbound)
         return_data = None
 
