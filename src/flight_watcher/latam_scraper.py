@@ -7,15 +7,22 @@ from pathlib import Path
 from patchright.sync_api import sync_playwright
 
 
-def _build_latam_url(origin: str, destination: str, outbound: str, inbound: str) -> str:
-    return (
+def _build_latam_url(
+    origin: str,
+    destination: str,
+    outbound: str,
+    inbound: str | None = None,
+    trip: str = "RT",
+) -> str:
+    url = (
         f"https://www.latamairlines.com/br/pt/oferta-voos"
         f"?origin={origin}&destination={destination}"
         f"&outbound={outbound}T00:00:00.000Z"
-        f"&inbound={inbound}T00:00:00.000Z"
-        f"&adt=1&chd=0&inf=0&trip=RT&cabin=Economy"
-        f"&redemption=false&sort=RECOMMENDED"
     )
+    if inbound:
+        url += f"&inbound={inbound}T00:00:00.000Z"
+    url += f"&adt=1&chd=0&inf=0&trip={trip}&cabin=Economy&redemption=false&sort=RECOMMENDED"
+    return url
 
 
 def search_latam(
@@ -52,7 +59,59 @@ def search_latam(
         page = browser.new_page(no_viewport=True)
         page.on("response", on_response)
 
-        url = _build_latam_url(origin, destination, outbound, inbound)
+        url = _build_latam_url(origin, destination, outbound, inbound, trip="RT")
+
+        try:
+            with page.expect_response(
+                lambda r: "bff/air-offers/v2/offers/search" in r.url and r.status == 200,
+                timeout=30_000,
+            ):
+                page.goto(url, wait_until="domcontentloaded")
+        except Exception as e:
+            print(f"Timeout waiting for BFF response: {e}")
+
+        browser.close()
+
+    elapsed = time.time() - start
+    print(f"Search completed in {elapsed:.1f}s")
+
+    if "error" in captured:
+        print(f"Response error: {captured['error']} (status {captured.get('status')})")
+        return None
+
+    return captured.get("data")
+
+
+def search_latam_oneway(
+    origin: str,
+    destination: str,
+    outbound: str,  # YYYY-MM-DD
+    headless: bool = False,
+) -> dict | None:
+    """
+    Search one-way LATAM flights using trip=OW URL.
+
+    Returns the parsed BFF JSON response or None if capture failed.
+    """
+    start = time.time()
+    captured = {}
+
+    def on_response(response):
+        if "bff/air-offers/v2/offers/search" in response.url:
+            try:
+                captured["data"] = response.json()
+                captured["status"] = response.status
+                captured.pop("error", None)
+            except Exception as e:
+                captured["error"] = str(e)
+                captured["status"] = response.status
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=headless, channel="chrome")
+        page = browser.new_page(no_viewport=True)
+        page.on("response", on_response)
+
+        url = _build_latam_url(origin, destination, outbound, trip="OW")
 
         try:
             with page.expect_response(

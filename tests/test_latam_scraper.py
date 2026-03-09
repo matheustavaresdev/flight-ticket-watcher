@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch, call
 from flight_watcher.latam_scraper import (
     _build_latam_url,
     parse_offers,
+    search_latam_oneway,
     search_latam_roundtrip,
 )
 
@@ -208,6 +209,58 @@ def test_roundtrip_url_has_correct_dates():
     assert "outbound=2026-06-18T00:00:00.000Z" in url
     assert "inbound=2026-07-03T00:00:00.000Z" in url
     assert "trip=RT" in url
+
+
+def test_build_latam_url_oneway_has_trip_ow_and_no_inbound():
+    """One-way URL must use trip=OW and omit the inbound parameter."""
+    url = _build_latam_url("FOR", "MIA", "2026-03-12", trip="OW")
+
+    assert "trip=OW" in url
+    assert "inbound=" not in url
+    assert "origin=FOR" in url
+    assert "destination=MIA" in url
+    assert "outbound=2026-03-12T00:00:00.000Z" in url
+
+
+@patch(f"{SEARCH_MODULE}.sync_playwright")
+def test_search_latam_oneway_captures_single_bff(mock_pw):
+    """One-way search navigates to OW page and returns the single BFF response."""
+    bff_resp = _make_bff_response("FOR", "MIA", brand_price=2500.0)
+
+    mock_browser = MagicMock()
+    mock_page = MagicMock()
+    mock_browser.new_page.return_value = mock_page
+    mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = mock_browser
+
+    captured_cb = {}
+
+    def fake_on(event, cb):
+        captured_cb[event] = cb
+
+    mock_page.on = fake_on
+
+    expect_ctx = MagicMock()
+
+    def ctx_exit(exc_type, exc_val, exc_tb):
+        mock_resp = MagicMock()
+        mock_resp.url = "https://www.latamairlines.com/bff/air-offers/v2/offers/search"
+        mock_resp.status = 200
+        mock_resp.json.return_value = bff_resp
+        captured_cb["response"](mock_resp)
+        return False
+
+    expect_ctx.__enter__ = MagicMock(return_value=expect_ctx)
+    expect_ctx.__exit__ = MagicMock(side_effect=ctx_exit)
+    mock_page.expect_response.return_value = expect_ctx
+
+    result = search_latam_oneway("FOR", "MIA", "2026-03-12")
+
+    assert result is not None
+    assert result["content"][0]["summary"]["origin"]["iataCode"] == "FOR"
+    # Confirm the navigated URL has trip=OW
+    goto_url = mock_page.goto.call_args[0][0]
+    assert "trip=OW" in goto_url
+    assert "inbound=" not in goto_url
 
 
 def test_parse_offers_extracts_brands():
