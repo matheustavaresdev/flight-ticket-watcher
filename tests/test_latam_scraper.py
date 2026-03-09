@@ -109,15 +109,12 @@ def _setup_roundtrip_mocks(mock_pw, outbound_resp, return_resp=None):
     mock_cookie_locator = MagicMock()
     mock_cookie_locator.count.return_value = 1
 
-    mock_card_locator = MagicMock()
     mock_cabin_locator = MagicMock()  # cabin-grouping-tabs-0 button
     mock_fare_locator = MagicMock()
 
     def locator_side_effect(selector):
         if "cookies-politics" in selector:
             return mock_cookie_locator
-        elif "wrapper-card-flight" in selector:
-            return mock_card_locator
         elif "cabin-grouping-tabs" in selector:
             return mock_cabin_locator
         elif "bundle-detail" in selector:
@@ -148,9 +145,8 @@ def test_roundtrip_captures_both_legs(mock_pw):
     assert ret is not None
     assert ret["content"][0]["summary"]["origin"]["iataCode"] == "GRU"
 
-    # Verify the interaction sequence
+    # Verify the interaction sequence (no card click — cabin button is clickable on load)
     mock_page.goto.assert_called_once()
-    mock_page.locator.assert_any_call('[data-testid="wrapper-card-flight-0"]')
     mock_page.locator.assert_any_call('[data-testid="cabin-grouping-tabs-0"] button')
     mock_page.locator.assert_any_call('[data-testid="bundle-detail-0-flight-select"]')
     mock_page.get_by_role.assert_called_once_with("button", name="Continuar")
@@ -179,23 +175,23 @@ def test_roundtrip_returns_none_when_outbound_times_out(mock_pw):
 
 
 @patch(f"{SEARCH_MODULE}.sync_playwright")
-def test_roundtrip_returns_none_return_when_click_fails(mock_pw):
-    """When card click fails, return (outbound_data, None)."""
+def test_roundtrip_returns_none_return_when_cabin_click_fails(mock_pw):
+    """When Economy cabin button click fails, return (outbound_data, None)."""
     outbound_resp = _make_bff_response("FOR", "GRU")
 
     mock_page, _ = _setup_roundtrip_mocks(mock_pw, outbound_resp, None)
-    # Make card click raise an exception
-    mock_card = MagicMock()
-    mock_card.click.side_effect = Exception("Click timeout")
+    # Make cabin button click raise an exception
+    mock_cabin = MagicMock()
+    mock_cabin.first.click.side_effect = Exception("Click timeout")
 
     original_locator = mock_page.locator.side_effect
 
-    def failing_card_locator(selector):
-        if "wrapper-card-flight" in selector:
-            return mock_card
+    def failing_cabin_locator(selector):
+        if "cabin-grouping-tabs" in selector:
+            return mock_cabin
         return original_locator(selector)
 
-    mock_page.locator = MagicMock(side_effect=failing_card_locator)
+    mock_page.locator = MagicMock(side_effect=failing_cabin_locator)
 
     outbound, ret = search_latam_roundtrip("FOR", "GRU", "2026-04-12", "2026-04-17")
 
