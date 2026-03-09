@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.flight_watcher.latam_scraper import parse_offers, search_latam, search_latam_roundtrip
+from src.flight_watcher.latam_scraper import parse_offers, search_latam_oneway, search_latam_roundtrip
 
 
 def find_cheapest_flights(offers: list[dict], top_n: int = 5) -> list[dict]:
@@ -83,8 +83,7 @@ def main():
             args.origin, args.destination, args.outbound, args.inbound
         )
     else:
-        # One-way: pass outbound date as inbound (LATAM still returns outbound offers for same-day RT)
-        outbound_data = search_latam(args.origin, args.destination, args.outbound, args.outbound)
+        outbound_data = search_latam_oneway(args.origin, args.destination, args.outbound)
         return_data = None
 
     if not outbound_data:

@@ -7,15 +7,22 @@ from pathlib import Path
 from patchright.sync_api import sync_playwright
 
 
-def _build_latam_url(origin: str, destination: str, outbound: str, inbound: str) -> str:
-    return (
+def _build_latam_url(
+    origin: str,
+    destination: str,
+    outbound: str,
+    inbound: str | None = None,
+    trip: str = "RT",
+) -> str:
+    url = (
         f"https://www.latamairlines.com/br/pt/oferta-voos"
         f"?origin={origin}&destination={destination}"
         f"&outbound={outbound}T00:00:00.000Z"
-        f"&inbound={inbound}T00:00:00.000Z"
-        f"&adt=1&chd=0&inf=0&trip=RT&cabin=Economy"
-        f"&redemption=false&sort=RECOMMENDED"
     )
+    if inbound:
+        url += f"&inbound={inbound}T00:00:00.000Z"
+    url += f"&adt=1&chd=0&inf=0&trip={trip}&cabin=Economy&redemption=false&sort=RECOMMENDED"
+    return url
 
 
 def search_latam(
@@ -52,7 +59,59 @@ def search_latam(
         page = browser.new_page(no_viewport=True)
         page.on("response", on_response)
 
-        url = _build_latam_url(origin, destination, outbound, inbound)
+        url = _build_latam_url(origin, destination, outbound, inbound, trip="RT")
+
+        try:
+            with page.expect_response(
+                lambda r: "bff/air-offers/v2/offers/search" in r.url and r.status == 200,
+                timeout=30_000,
+            ):
+                page.goto(url, wait_until="domcontentloaded")
+        except Exception as e:
+            print(f"Timeout waiting for BFF response: {e}")
+
+        browser.close()
+
+    elapsed = time.time() - start
+    print(f"Search completed in {elapsed:.1f}s")
+
+    if "error" in captured:
+        print(f"Response error: {captured['error']} (status {captured.get('status')})")
+        return None
+
+    return captured.get("data")
+
+
+def search_latam_oneway(
+    origin: str,
+    destination: str,
+    outbound: str,  # YYYY-MM-DD
+    headless: bool = False,
+) -> dict | None:
+    """
+    Search one-way LATAM flights using trip=OW URL.
+
+    Returns the parsed BFF JSON response or None if capture failed.
+    """
+    start = time.time()
+    captured = {}
+
+    def on_response(response):
+        if "bff/air-offers/v2/offers/search" in response.url:
+            try:
+                captured["data"] = response.json()
+                captured["status"] = response.status
+                captured.pop("error", None)
+            except Exception as e:
+                captured["error"] = str(e)
+                captured["status"] = response.status
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=headless, channel="chrome")
+        page = browser.new_page(no_viewport=True)
+        page.on("response", on_response)
+
+        url = _build_latam_url(origin, destination, outbound, trip="OW")
 
         try:
             with page.expect_response(
@@ -83,31 +142,36 @@ def search_latam_roundtrip(
     headless: bool = False,
 ) -> tuple[dict | None, dict | None]:
     """
-    Search LATAM round-trip flights and capture both outbound and return BFF responses
-    from a single page load.
+    Search LATAM round-trip flights in a single browser session.
+
+    Mirrors the real user flow: load RT search page, capture outbound BFF,
+    select a flight + fare, then capture the return BFF.
 
     Returns (outbound_data, return_data). Either may be None if not captured.
     """
     start = time.time()
-    captured_responses: list[dict] = []
+    outbound_data = None
+    return_data = None
+    bff_responses: list[dict] = []
 
     def on_response(response):
-        if "bff/air-offers/v2/offers/search" in response.url and response.status == 200:
+        if "bff/air-offers/v2/offers/search" in response.url:
             try:
-                captured_responses.append(response.json())
+                data = response.json()
+                if response.status == 200 and isinstance(data, dict) and "content" in data:
+                    bff_responses.append(data)
+                    print(f"  [BFF] captured {len(data.get('content', []))} offers")
             except Exception as e:
-                print(f"[WARNING] BFF response matched but failed to parse: {e}")
+                print(f"  [BFF] error: {e}")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=headless,
-            channel="chrome",
-        )
+        browser = p.chromium.launch(headless=headless, channel="chrome")
         page = browser.new_page(no_viewport=True)
         page.on("response", on_response)
 
         url = _build_latam_url(origin, destination, outbound, inbound)
 
+        # Step 1: Load RT search page and capture outbound BFF
         try:
             with page.expect_response(
                 lambda r: "bff/air-offers/v2/offers/search" in r.url and r.status == 200,
@@ -115,41 +179,72 @@ def search_latam_roundtrip(
             ):
                 page.goto(url, wait_until="domcontentloaded")
         except Exception as e:
-            print(f"Timeout waiting for BFF response: {e}")
+            print(f"Timeout waiting for outbound BFF: {e}")
+            browser.close()
+            elapsed = time.time() - start
+            print(f"Search completed in {elapsed:.1f}s")
+            return None, None
 
-        # Wait up to 5s for the second BFF response (return leg)
-        wait_start = time.time()
-        while len(captured_responses) < 2 and (time.time() - wait_start) < 5:
-            time.sleep(0.25)
+        if bff_responses:
+            outbound_data = bff_responses[0]
+            print(f"Outbound: {len(outbound_data.get('content', []))} offers")
+
+        # Step 2: Dismiss cookie consent if present
+        page.wait_for_timeout(2000)
+        cookie_btn = page.locator('[data-testid="cookies-politics-button--button"]')
+        if cookie_btn.count() > 0:
+            try:
+                cookie_btn.click(timeout=5000)
+                page.wait_for_timeout(1000)
+            except Exception:
+                pass
+
+        # Step 3: Expand Economy cabin section directly (cabin-grouping-tabs-0 is
+        # already present on page load; clicking wrapper-card-flight-0 first blocks
+        # the Economy button from being actionable)
+        try:
+            page.locator('[data-testid="cabin-grouping-tabs-0"] button').first.click(timeout=10_000)
+            page.wait_for_timeout(1000)
+        except Exception as e:
+            print(f"Failed to expand Economy cabin: {e}")
+            browser.close()
+            elapsed = time.time() - start
+            print(f"Search completed in {elapsed:.1f}s")
+            return outbound_data, None
+
+        # Step 4: Select the Light fare
+        try:
+            page.locator('[data-testid="bundle-detail-0-flight-select"]').wait_for(state="visible", timeout=30_000)
+            page.locator('[data-testid="bundle-detail-0-flight-select"]').click(timeout=10_000)
+            page.wait_for_timeout(1000)
+        except Exception as e:
+            print(f"Failed to select fare: {e}")
+            browser.close()
+            elapsed = time.time() - start
+            print(f"Search completed in {elapsed:.1f}s")
+            return outbound_data, None
+
+        # Step 5: Click "Continuar" and wait for return BFF
+        try:
+            continuar = page.get_by_role("button", name="Continuar")
+            with page.expect_response(
+                lambda r: "bff/air-offers/v2/offers/search" in r.url and r.status == 200,
+                timeout=90_000,
+            ):
+                continuar.click(timeout=10_000)
+            print("Return BFF captured")
+        except Exception as e:
+            print(f"Return flight capture failed: {e}")
+
+        # The last bff_responses entry should be the return leg
+        if len(bff_responses) >= 2:
+            return_data = bff_responses[-1]
+            print(f"Return: {len(return_data.get('content', []))} offers")
 
         browser.close()
 
     elapsed = time.time() - start
-    print(f"Search completed in {elapsed:.1f}s — captured {len(captured_responses)} BFF response(s)")
-
-    if not captured_responses:
-        return None, None
-
-    # Identify legs by matching the origin IATA in the first offer of each response
-    outbound_data: dict | None = None
-    return_data: dict | None = None
-    for resp in captured_responses:
-        content = resp.get("content", [])
-        if not content:
-            continue
-        resp_origin = content[0].get("summary", {}).get("origin", {}).get("iataCode", "")
-        if resp_origin.upper() == origin.upper():
-            outbound_data = resp
-        else:
-            return_data = resp
-
-    # Fallback: assign by capture order if IATA matching didn't work
-    if outbound_data is None or return_data is None:
-        if outbound_data is None and captured_responses:
-            outbound_data = captured_responses[0]
-        if return_data is None and len(captured_responses) > 1:
-            return_data = captured_responses[1]
-
+    print(f"Search completed in {elapsed:.1f}s")
     return outbound_data, return_data
 
 
