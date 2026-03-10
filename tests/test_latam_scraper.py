@@ -263,6 +263,34 @@ def test_search_latam_oneway_captures_single_bff(mock_pw):
     assert "inbound=" not in goto_url
 
 
+@patch(f"{SEARCH_MODULE}.get_breaker")
+@patch(f"{SEARCH_MODULE}.sync_playwright")
+def test_roundtrip_records_failure_at_most_once_per_search(mock_pw, mock_get_breaker):
+    """_failure_recorded flag prevents record_failure from being called more than once
+    even if multiple exception handlers fire in a single search_latam_roundtrip call."""
+    mock_breaker = MagicMock()
+    mock_breaker.allow_request.return_value = True
+    mock_get_breaker.return_value = mock_breaker
+
+    mock_browser = MagicMock()
+    mock_page = MagicMock()
+    mock_browser.new_page.return_value = mock_page
+    mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = mock_browser
+    mock_page.on = MagicMock()
+
+    # Make the outbound expect_response context manager raise on __exit__
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__ = MagicMock(return_value=mock_ctx)
+    mock_ctx.__exit__ = MagicMock(side_effect=Exception("Timeout — simulated block"))
+    mock_page.expect_response.return_value = mock_ctx
+
+    search_latam_roundtrip("FOR", "GRU", "2026-04-12", "2026-04-17")
+
+    # Despite the exception propagating through the handler, record_failure must be
+    # called exactly once (not once per except clause that could have fired).
+    assert mock_breaker.record_failure.call_count == 1
+
+
 def test_parse_offers_extracts_brands():
     data = _make_bff_response("FOR", "GRU", brand_price=1029.58)
 
