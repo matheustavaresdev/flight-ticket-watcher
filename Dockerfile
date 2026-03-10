@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-# Install system dependencies: Chromium + required libs for headless browser
+# Install system dependencies: Chromium libs required by patchright's bundled Chromium
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     chromium-driver \
@@ -26,16 +26,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Use system Chromium so patchright doesn't download its own
-ENV PATCHRIGHT_BROWSERS_PATH=/usr/lib/chromium
-
 WORKDIR /app
 
 # Copy project metadata first for layer caching
 COPY pyproject.toml ./
 COPY src/ ./src/
 
-# Install the package
+# Install the package (requires root)
 RUN pip install --no-cache-dir .
+
+# Create non-root user after pip install (pip needs root), before browser install
+RUN useradd -m -u 1000 appuser
+USER appuser
+
+# Patchright uses PATCHRIGHT_BROWSERS_PATH as its download root (like ~/.cache/ms-playwright).
+# We point it at appuser's home so the bundled Chromium is owned by the runtime user.
+ENV PATCHRIGHT_BROWSERS_PATH=/home/appuser/.cache/ms-playwright
+RUN patchright install chromium
 
 ENTRYPOINT ["python", "-m", "flight_watcher"]
