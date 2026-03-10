@@ -42,4 +42,4 @@ USER appuser
 ENV PATCHRIGHT_BROWSERS_PATH=/home/appuser/.cache/ms-playwright
 RUN patchright install chromium
 
-ENTRYPOINT ["python", "-m", "flight_watcher"]
+CMD ["sh", "-c", "alembic upgrade head && python -m flight_watcher"]
