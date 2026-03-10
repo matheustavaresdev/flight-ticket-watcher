@@ -3,6 +3,7 @@ from datetime import datetime
 
 from fast_flights import FlightQuery, Passengers, create_query, get_flights
 
+from flight_watcher.circuit_breaker import get_breaker
 from flight_watcher.delays import random_delay
 from flight_watcher.errors import classify_error, get_retry_strategy
 from flight_watcher.models import FlightResult
@@ -17,6 +18,10 @@ def search_one_way(
     passengers: int = 1,
 ) -> list[FlightResult]:
     """Search one-way flights and return a list of FlightResult."""
+    breaker = get_breaker()
+    if not breaker.allow_request():
+        logger.warning("Circuit breaker OPEN — skipping search %s→%s on %s", origin, destination, date)
+        return []
     for attempt in range(3):
         try:
             query = create_query(
@@ -26,9 +31,15 @@ def search_one_way(
                 currency="BRL",
             )
             flights_obj = get_flights(query)
-            return _map_flight_to_results(flights_obj, origin, destination, date)
+            results = _map_flight_to_results(flights_obj, origin, destination, date)
+            breaker.record_success()
+            return results
         except Exception as exc:
             category = classify_error(exc)
+            breaker.record_failure(category)
+            if not breaker.allow_request():
+                logger.warning("Circuit breaker tripped — aborting remaining retries")
+                break
             strategy = get_retry_strategy(category)
             if strategy.skip_item:
                 logger.warning(

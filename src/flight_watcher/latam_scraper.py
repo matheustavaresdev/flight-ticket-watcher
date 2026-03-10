@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from patchright.sync_api import sync_playwright
 
+from flight_watcher.circuit_breaker import get_breaker
 from flight_watcher.errors import classify_error
 
 logger = logging.getLogger(__name__)
@@ -156,6 +157,11 @@ def search_latam_roundtrip(
 
     Returns (outbound_data, return_data). Either may be None if not captured.
     """
+    breaker = get_breaker()
+    if not breaker.allow_request():
+        logger.warning("Circuit breaker OPEN — skipping LATAM search %s→%s", origin, destination)
+        return None, None
+
     start = time.time()
     outbound_data = None
     return_data = None
@@ -187,6 +193,7 @@ def search_latam_roundtrip(
                 page.goto(url, wait_until="domcontentloaded")
         except Exception as exc:
             category = classify_error(exc)
+            breaker.record_failure(category)
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
             browser.close()
             elapsed = time.time() - start
@@ -195,6 +202,7 @@ def search_latam_roundtrip(
 
         if bff_responses:
             outbound_data = bff_responses[0]
+            breaker.record_success()
             print(f"Outbound: {len(outbound_data.get('content', []))} offers")
 
         # Step 2: Dismiss cookie consent if present
@@ -215,6 +223,7 @@ def search_latam_roundtrip(
             page.wait_for_timeout(1000)
         except Exception as exc:
             category = classify_error(exc)
+            breaker.record_failure(category)
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
             browser.close()
             elapsed = time.time() - start
@@ -228,6 +237,7 @@ def search_latam_roundtrip(
             page.wait_for_timeout(1000)
         except Exception as exc:
             category = classify_error(exc)
+            breaker.record_failure(category)
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
             browser.close()
             elapsed = time.time() - start
@@ -245,6 +255,7 @@ def search_latam_roundtrip(
             print("Return BFF captured")
         except Exception as exc:
             category = classify_error(exc)
+            breaker.record_failure(category)
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
 
         # The last bff_responses entry should be the return leg
