@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-# Install system dependencies: Chromium libs required by patchright's bundled Chromium
+# Install system dependencies: browser libs required by patchright's Chrome/Chromium
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     libnss3 \
@@ -35,11 +35,15 @@ RUN pip install --no-cache-dir .
 
 # Create non-root user after pip install (pip needs root), before browser install
 RUN useradd -m -u 1000 appuser
+
+# Create output directory writable by appuser (FLI-43)
+RUN mkdir -p /app/output && chown -R appuser:appuser /app/output
+
 USER appuser
 
-# Patchright uses PATCHRIGHT_BROWSERS_PATH as its download root (like ~/.cache/ms-playwright).
-# We point it at appuser's home so the bundled Chromium is owned by the runtime user.
+# Patchright uses PATCHRIGHT_BROWSERS_PATH as its download root.
+# Install chrome channel to match code's channel="chrome" (FLI-44).
 ENV PATCHRIGHT_BROWSERS_PATH=/home/appuser/.cache/ms-playwright
-RUN patchright install chromium
+RUN patchright install chrome
 
 ENTRYPOINT ["python", "-m", "flight_watcher"]
