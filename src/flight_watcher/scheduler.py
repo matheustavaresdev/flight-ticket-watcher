@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Optional
 
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
@@ -56,10 +55,10 @@ def _on_job_executed(event) -> None:
 
 def _on_job_error(event) -> None:
     logger.error(
-        "Job %s raised an exception: %s",
+        "Job %s raised an exception: %s\n%s",
         event.job_id,
         event.exception,
-        exc_info=event.traceback,
+        event.traceback or "",
     )
 
 
