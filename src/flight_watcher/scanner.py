@@ -1,9 +1,10 @@
 import logging
-import time
 from datetime import datetime
 
 from fast_flights import FlightQuery, Passengers, create_query, get_flights
 
+from flight_watcher.delays import random_delay
+from flight_watcher.errors import classify_error, get_retry_strategy
 from flight_watcher.models import FlightResult
 
 logger = logging.getLogger(__name__)
@@ -27,18 +28,26 @@ def search_one_way(
             flights_obj = get_flights(query)
             return _map_flight_to_results(flights_obj, origin, destination, date)
         except Exception as exc:
-            if attempt < 2:
-                wait = 2 ** attempt
+            category = classify_error(exc)
+            strategy = get_retry_strategy(category)
+            if strategy.skip_item:
                 logger.warning(
-                    "search_one_way %s→%s %s failed (attempt %d/3): %s — retrying in %ds",
-                    origin, destination, date, attempt + 1, exc, wait,
+                    "search_one_way %s→%s %s: %s (category=%s) — skipping",
+                    origin, destination, date, exc, category.value,
                 )
-                time.sleep(wait)
+                return []
+            if attempt < strategy.max_retries:
+                wait = random_delay(strategy.min_delay_sec, strategy.max_delay_sec)
+                logger.warning(
+                    "search_one_way %s→%s %s failed (attempt %d/%d, category=%s): %s — retried after %.0fs",
+                    origin, destination, date, attempt + 1, strategy.max_retries, category.value, exc, wait,
+                )
             else:
                 logger.error(
-                    "search_one_way %s→%s %s failed after 3 attempts: %s",
-                    origin, destination, date, exc,
+                    "search_one_way %s→%s %s failed after %d attempts (category=%s): %s",
+                    origin, destination, date, attempt + 1, category.value, exc,
                 )
+                break
     return []
 
 
@@ -51,7 +60,7 @@ def search_roundtrip(
 ) -> tuple[list[FlightResult], list[FlightResult]]:
     """Search round-trip flights. Returns (outbound_results, return_results)."""
     outbound = search_one_way(origin, destination, departure_date, passengers)
-    time.sleep(2)
+    random_delay()
     inbound = search_one_way(destination, origin, return_date, passengers)
     return outbound, inbound
 

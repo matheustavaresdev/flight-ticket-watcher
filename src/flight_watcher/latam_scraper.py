@@ -1,10 +1,15 @@
 """LATAM Airlines flight search via Patchright + BFF API interception."""
 
 import json
+import logging
 import time
 from datetime import datetime
 from pathlib import Path
 from patchright.sync_api import sync_playwright
+
+from flight_watcher.errors import classify_error
+
+logger = logging.getLogger(__name__)
 
 
 def _build_latam_url(
@@ -67,8 +72,9 @@ def search_latam(
                 timeout=30_000,
             ):
                 page.goto(url, wait_until="domcontentloaded")
-        except Exception as e:
-            print(f"Timeout waiting for BFF response: {e}")
+        except Exception as exc:
+            category = classify_error(exc)
+            logger.warning("latam search failed (category=%s): %s", category.value, exc)
 
         browser.close()
 
@@ -76,7 +82,7 @@ def search_latam(
     print(f"Search completed in {elapsed:.1f}s")
 
     if "error" in captured:
-        print(f"Response error: {captured['error']} (status {captured.get('status')})")
+        logger.warning("response error (status=%s): %s", captured.get('status'), captured['error'])
         return None
 
     return captured.get("data")
@@ -119,8 +125,9 @@ def search_latam_oneway(
                 timeout=30_000,
             ):
                 page.goto(url, wait_until="domcontentloaded")
-        except Exception as e:
-            print(f"Timeout waiting for BFF response: {e}")
+        except Exception as exc:
+            category = classify_error(exc)
+            logger.warning("latam search failed (category=%s): %s", category.value, exc)
 
         browser.close()
 
@@ -128,7 +135,7 @@ def search_latam_oneway(
     print(f"Search completed in {elapsed:.1f}s")
 
     if "error" in captured:
-        print(f"Response error: {captured['error']} (status {captured.get('status')})")
+        logger.warning("response error (status=%s): %s", captured.get('status'), captured['error'])
         return None
 
     return captured.get("data")
@@ -178,11 +185,12 @@ def search_latam_roundtrip(
                 timeout=30_000,
             ):
                 page.goto(url, wait_until="domcontentloaded")
-        except Exception as e:
-            print(f"Timeout waiting for outbound BFF: {e}")
+        except Exception as exc:
+            category = classify_error(exc)
+            logger.warning("latam search failed (category=%s): %s", category.value, exc)
             browser.close()
             elapsed = time.time() - start
-            print(f"Search completed in {elapsed:.1f}s")
+            logger.debug("Search completed in %.1fs", elapsed)
             return None, None
 
         if bff_responses:
@@ -205,11 +213,12 @@ def search_latam_roundtrip(
         try:
             page.locator('[data-testid="cabin-grouping-tabs-0"] button').first.click(timeout=10_000)
             page.wait_for_timeout(1000)
-        except Exception as e:
-            print(f"Failed to expand Economy cabin: {e}")
+        except Exception as exc:
+            category = classify_error(exc)
+            logger.warning("latam search failed (category=%s): %s", category.value, exc)
             browser.close()
             elapsed = time.time() - start
-            print(f"Search completed in {elapsed:.1f}s")
+            logger.debug("Search completed in %.1fs", elapsed)
             return outbound_data, None
 
         # Step 4: Select the Light fare
@@ -217,11 +226,12 @@ def search_latam_roundtrip(
             page.locator('[data-testid="bundle-detail-0-flight-select"]').wait_for(state="visible", timeout=30_000)
             page.locator('[data-testid="bundle-detail-0-flight-select"]').click(timeout=10_000)
             page.wait_for_timeout(1000)
-        except Exception as e:
-            print(f"Failed to select fare: {e}")
+        except Exception as exc:
+            category = classify_error(exc)
+            logger.warning("latam search failed (category=%s): %s", category.value, exc)
             browser.close()
             elapsed = time.time() - start
-            print(f"Search completed in {elapsed:.1f}s")
+            logger.debug("Search completed in %.1fs", elapsed)
             return outbound_data, None
 
         # Step 5: Click "Continuar" and wait for return BFF
@@ -233,8 +243,9 @@ def search_latam_roundtrip(
             ):
                 continuar.click(timeout=10_000)
             print("Return BFF captured")
-        except Exception as e:
-            print(f"Return flight capture failed: {e}")
+        except Exception as exc:
+            category = classify_error(exc)
+            logger.warning("latam search failed (category=%s): %s", category.value, exc)
 
         # The last bff_responses entry should be the return leg
         if len(bff_responses) >= 2:
