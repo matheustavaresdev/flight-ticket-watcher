@@ -82,7 +82,7 @@ def search_latam(
     print(f"Search completed in {elapsed:.1f}s")
 
     if "error" in captured:
-        print(f"Response error: {captured['error']} (status {captured.get('status')})")
+        logger.warning("response error (status=%s): %s", captured.get('status'), captured['error'])
         return None
 
     return captured.get("data")
@@ -135,7 +135,7 @@ def search_latam_oneway(
     print(f"Search completed in {elapsed:.1f}s")
 
     if "error" in captured:
-        print(f"Response error: {captured['error']} (status {captured.get('status')})")
+        logger.warning("response error (status=%s): %s", captured.get('status'), captured['error'])
         return None
 
     return captured.get("data")

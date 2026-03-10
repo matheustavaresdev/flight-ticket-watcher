@@ -57,7 +57,7 @@ def test_search_one_way_empty_results():
 def test_search_one_way_handles_exception():
     with patch("flight_watcher.scanner.get_flights", side_effect=Exception("network error")), \
          patch("flight_watcher.scanner.create_query"), \
-         patch("flight_watcher.scanner.time.sleep"):
+         patch("flight_watcher.scanner.random_delay", return_value=0):
         results = search_one_way("FOR", "GRU", "2026-04-08")
 
     assert results == []
@@ -67,7 +67,6 @@ def test_search_roundtrip_calls_twice():
     mock_result = [_make_flight()]
     with patch("flight_watcher.scanner.get_flights", return_value=mock_result) as mock_gf, \
          patch("flight_watcher.scanner.create_query"), \
-         patch("flight_watcher.scanner.time.sleep"), \
          patch("flight_watcher.scanner.random_delay"):
         outbound, inbound = search_roundtrip("FOR", "GRU", "2026-04-08", "2026-04-15")
 

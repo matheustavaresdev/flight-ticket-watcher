@@ -1,6 +1,4 @@
 import logging
-import random
-import time
 from datetime import datetime
 
 from fast_flights import FlightQuery, Passengers, create_query, get_flights
@@ -39,19 +37,17 @@ def search_one_way(
                 )
                 return []
             if attempt < strategy.max_retries:
-                wait = random.uniform(strategy.min_delay_sec, strategy.max_delay_sec)
-                # Cap retry delay for fast-flights (it's fast, no need for 30min waits)
-                wait = min(wait, 30)
+                wait = random_delay(strategy.min_delay_sec, strategy.max_delay_sec)
                 logger.warning(
-                    "search_one_way %s→%s %s failed (attempt %d/%d, category=%s): %s — retrying in %.0fs",
+                    "search_one_way %s→%s %s failed (attempt %d/%d, category=%s): %s — retried after %.0fs",
                     origin, destination, date, attempt + 1, strategy.max_retries, category.value, exc, wait,
                 )
-                time.sleep(wait)
             else:
                 logger.error(
                     "search_one_way %s→%s %s failed after %d attempts (category=%s): %s",
                     origin, destination, date, attempt + 1, category.value, exc,
                 )
+                break
     return []
 
 
