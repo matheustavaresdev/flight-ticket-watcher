@@ -166,6 +166,7 @@ def search_latam_roundtrip(
     outbound_data = None
     return_data = None
     bff_responses: list[dict] = []
+    _failure_recorded = False
 
     def on_response(response):
         if "bff/air-offers/v2/offers/search" in response.url:
@@ -193,7 +194,9 @@ def search_latam_roundtrip(
                 page.goto(url, wait_until="domcontentloaded")
         except Exception as exc:
             category = classify_error(exc)
-            breaker.record_failure(category)
+            if not _failure_recorded:
+                breaker.record_failure(category)
+                _failure_recorded = True
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
             browser.close()
             elapsed = time.time() - start
@@ -223,7 +226,9 @@ def search_latam_roundtrip(
             page.wait_for_timeout(1000)
         except Exception as exc:
             category = classify_error(exc)
-            breaker.record_failure(category)
+            if not _failure_recorded:
+                breaker.record_failure(category)
+                _failure_recorded = True
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
             browser.close()
             elapsed = time.time() - start
@@ -237,7 +242,9 @@ def search_latam_roundtrip(
             page.wait_for_timeout(1000)
         except Exception as exc:
             category = classify_error(exc)
-            breaker.record_failure(category)
+            if not _failure_recorded:
+                breaker.record_failure(category)
+                _failure_recorded = True
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
             browser.close()
             elapsed = time.time() - start
@@ -255,7 +262,9 @@ def search_latam_roundtrip(
             print("Return BFF captured")
         except Exception as exc:
             category = classify_error(exc)
-            breaker.record_failure(category)
+            if not _failure_recorded:
+                breaker.record_failure(category)
+                _failure_recorded = True
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
 
         # The last bff_responses entry should be the return leg

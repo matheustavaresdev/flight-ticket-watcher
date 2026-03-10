@@ -37,6 +37,7 @@ class CircuitBreaker:
         self._consecutive_failures = 0
         self._backoff_index = 0
         self._opened_at: float = 0.0  # timestamp when state became OPEN
+        self._probe_sent: bool = False
 
     @property
     def state(self) -> CircuitState:
@@ -46,6 +47,7 @@ class CircuitBreaker:
             backoff = self.backoff_levels[self._backoff_index]
             if elapsed >= backoff:
                 self._state = CircuitState.HALF_OPEN
+                self._probe_sent = False
                 logger.info(
                     "Circuit breaker → HALF_OPEN (backoff %.0fs elapsed)", backoff
                 )
@@ -57,7 +59,10 @@ class CircuitBreaker:
         if current == CircuitState.CLOSED:
             return True
         if current == CircuitState.HALF_OPEN:
-            return True  # allow one probe request
+            if not self._probe_sent:
+                self._probe_sent = True
+                return True  # allow one probe request
+            return False  # probe already in flight
         # OPEN — still in backoff
         remaining = (
             self.backoff_levels[self._backoff_index]
@@ -75,6 +80,7 @@ class CircuitBreaker:
             self._state = CircuitState.CLOSED
             self._consecutive_failures = 0
             self._backoff_index = 0
+            self._probe_sent = False
         elif self._state == CircuitState.CLOSED:
             self._consecutive_failures = 0
 
@@ -98,6 +104,7 @@ class CircuitBreaker:
             )
             self._state = CircuitState.OPEN
             self._opened_at = time.monotonic()
+            self._probe_sent = False
             logger.warning(
                 "Circuit breaker → OPEN (probe failed, backoff=%ds)",
                 self.backoff_levels[self._backoff_index],
@@ -118,6 +125,14 @@ def get_breaker() -> CircuitBreaker:
     """Return the module-level singleton CircuitBreaker."""
     global _breaker
     if _breaker is None:
-        threshold = int(os.environ.get("CB_FAILURE_THRESHOLD", _DEFAULT_FAILURE_THRESHOLD))
+        try:
+            threshold = int(os.environ.get("CB_FAILURE_THRESHOLD", _DEFAULT_FAILURE_THRESHOLD))
+            if threshold <= 0:
+                raise ValueError("must be positive")
+        except (ValueError, TypeError):
+            logger.warning(
+                "CB_FAILURE_THRESHOLD invalid, using default %d", _DEFAULT_FAILURE_THRESHOLD
+            )
+            threshold = _DEFAULT_FAILURE_THRESHOLD
         _breaker = CircuitBreaker(failure_threshold=threshold)
     return _breaker
