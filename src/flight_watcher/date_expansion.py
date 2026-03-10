@@ -69,6 +69,46 @@ def expand_dates(
     return outbound_dates, return_dates
 
 
+def generate_pairs(
+    outbound_dates: list[str],
+    return_dates: list[str],
+    max_trip_days: int,
+) -> list[tuple[str, str]]:
+    """Generate all valid (outbound, return) date pairs within the trip duration constraint.
+
+    Args:
+        outbound_dates: List of candidate outbound dates as YYYY-MM-DD strings.
+        return_dates: List of candidate return dates as YYYY-MM-DD strings.
+        max_trip_days: Maximum trip duration in days (must be positive).
+
+    Returns:
+        Sorted list of (outbound_date, return_date) tuples as YYYY-MM-DD strings.
+        A pair is included when ``return_date >= outbound_date`` and
+        ``(return_date - outbound_date).days <= max_trip_days``.
+
+    Raises:
+        ValueError: If ``outbound_dates`` or ``return_dates`` is empty, or if
+            ``max_trip_days`` is not positive.
+    """
+    if max_trip_days <= 0:
+        raise ValueError(f"max_trip_days must be positive, got {max_trip_days}")
+    if not outbound_dates:
+        raise ValueError("outbound_dates must not be empty")
+    if not return_dates:
+        raise ValueError("return_dates must not be empty")
+
+    pairs = []
+    for out_str in outbound_dates:
+        out = date.fromisoformat(out_str)
+        for ret_str in return_dates:
+            ret = date.fromisoformat(ret_str)
+            if ret >= out and (ret - out).days <= max_trip_days:
+                pairs.append((out_str, ret_str))
+
+    pairs.sort()
+    return pairs
+
+
 def _date_range(start: date, end: date) -> list[str]:
     """Return a list of YYYY-MM-DD strings for every date from start to end inclusive."""
     result = []
