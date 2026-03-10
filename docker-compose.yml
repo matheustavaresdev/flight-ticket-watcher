@@ -29,6 +29,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       SCAN_SCHEDULE: ${SCAN_SCHEDULE}
       LOG_LEVEL: ${LOG_LEVEL}
+      DISPLAY: :99
     init: true
     ipc: host
     shm_size: 2gb

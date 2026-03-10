@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libcairo2 \
     libasound2 \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -39,6 +40,10 @@ RUN useradd -m -u 1000 appuser
 # Create output directory writable by appuser (FLI-43)
 RUN mkdir -p /app/output && chown -R appuser:appuser /app/output
 
+# Copy and make entrypoint executable before switching to non-root user
+COPY scripts/entrypoint.sh /app/scripts/entrypoint.sh
+RUN chmod +x /app/scripts/entrypoint.sh
+
 USER appuser
 
 # Patchright uses PATCHRIGHT_BROWSERS_PATH as its download root.
@@ -46,4 +51,4 @@ USER appuser
 ENV PATCHRIGHT_BROWSERS_PATH=/home/appuser/.cache/ms-playwright
 RUN patchright install chrome
 
-CMD ["sh", "-c", "alembic upgrade head && python -m flight_watcher"]
+ENTRYPOINT ["/app/scripts/entrypoint.sh"]
