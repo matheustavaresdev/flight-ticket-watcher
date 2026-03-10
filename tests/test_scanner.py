@@ -67,7 +67,8 @@ def test_search_roundtrip_calls_twice():
     mock_result = [_make_flight()]
     with patch("flight_watcher.scanner.get_flights", return_value=mock_result) as mock_gf, \
          patch("flight_watcher.scanner.create_query"), \
-         patch("flight_watcher.scanner.time.sleep"):
+         patch("flight_watcher.scanner.time.sleep"), \
+         patch("flight_watcher.scanner.random_delay"):
         outbound, inbound = search_roundtrip("FOR", "GRU", "2026-04-08", "2026-04-15")
 
     assert mock_gf.call_count == 2
