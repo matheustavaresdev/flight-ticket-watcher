@@ -2,8 +2,6 @@ FROM python:3.12-slim
 
 # Install system dependencies: Chromium libs required by patchright's bundled Chromium
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
-    chromium-driver \
     libglib2.0-0 \
     libnss3 \
     libnspr4 \
