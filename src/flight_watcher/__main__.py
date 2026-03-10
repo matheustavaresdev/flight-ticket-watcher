@@ -1,25 +1,33 @@
 import logging
-from datetime import date, timedelta
-from flight_watcher.scanner import search_roundtrip
-from flight_watcher.display import print_results
+import signal
+import sys
+import time
+
+from flight_watcher.scheduler import start_scheduler, stop_scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
+logger = logging.getLogger(__name__)
+
+
+def _handle_signal(signum, frame):
+    logger.info("Received signal %s, shutting down...", signum)
+    stop_scheduler()
+    sys.exit(0)
+
+
 def main():
-    departure_date = (date.today() + timedelta(days=30)).strftime("%Y-%m-%d")
-    return_date = (date.today() + timedelta(days=37)).strftime("%Y-%m-%d")
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
 
-    print(f"Searching FOR → GRU on {departure_date} and GRU → FOR on {return_date}")
+    start_scheduler()
 
-    outbound, inbound = search_roundtrip(
-        origin="FOR",
-        destination="GRU",
-        departure_date=departure_date,
-        return_date=return_date,
-    )
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        stop_scheduler()
 
-    print_results(outbound, header=f"FOR → GRU ({departure_date})")
-    print_results(inbound, header=f"GRU → FOR ({return_date})")
 
 if __name__ == "__main__":
     main()
