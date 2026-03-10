@@ -73,7 +73,7 @@ class ScanRun(Base):
     search_config_id: Mapped[int] = mapped_column(ForeignKey("search_configs.id"), nullable=False)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    status: Mapped[ScanStatus] = mapped_column(Enum(ScanStatus, native_enum=False), nullable=False, server_default=ScanStatus.RUNNING.value)
+    status: Mapped[ScanStatus] = mapped_column(Enum(ScanStatus, native_enum=False, values_callable=lambda x: [e.value for e in x], validate_strings=True), nullable=False, server_default=ScanStatus.RUNNING.value)
     last_successful_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -102,7 +102,7 @@ class PriceSnapshot(Base):
     brand: Mapped[str] = mapped_column(String(30), nullable=False)           # LIGHT/STANDARD/FULL/PREMIUM ECONOMY
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)         # ISO 4217
-    search_type: Mapped[SearchType] = mapped_column(Enum(SearchType, native_enum=False), nullable=False)
+    search_type: Mapped[SearchType] = mapped_column(Enum(SearchType, native_enum=False, values_callable=lambda x: [e.value for e in x], validate_strings=True), nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     scan_run: Mapped["ScanRun"] = relationship(back_populates="price_snapshots")
