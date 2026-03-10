@@ -36,11 +36,11 @@ class TestCreateScheduler(unittest.TestCase):
     @patch(f"{SCHED_MODULE}.SQLAlchemyJobStore")
     @patch(f"{SCHED_MODULE}.BackgroundScheduler")
     def test_scheduler_configured_with_utc(self, mock_bg, mock_store, mock_url):
+        from datetime import timezone
         from flight_watcher.scheduler import create_scheduler
-        from pytz import utc
         create_scheduler()
         call_kwargs = mock_bg.call_args[1]
-        self.assertEqual(call_kwargs["timezone"], utc)
+        self.assertEqual(call_kwargs["timezone"], timezone.utc)
 
     @patch(f"{SCHED_MODULE}.get_database_url", return_value="postgresql+psycopg://user:pass@localhost/db")
     @patch(f"{SCHED_MODULE}.SQLAlchemyJobStore")

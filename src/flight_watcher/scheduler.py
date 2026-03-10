@@ -5,7 +5,7 @@ from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
-from pytz import utc
+from datetime import timezone
 
 from flight_watcher.db import get_database_url
 
@@ -34,7 +34,7 @@ def create_scheduler() -> BackgroundScheduler:
         jobstores=jobstores,
         executors=executors,
         job_defaults=job_defaults,
-        timezone=utc,
+        timezone=timezone.utc,
     )
     scheduler.add_listener(_on_job_executed, EVENT_JOB_EXECUTED)
     scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
