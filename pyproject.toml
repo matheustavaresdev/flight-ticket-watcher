@@ -16,6 +16,7 @@ test = ["pytest>=7.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 
 [tool.hatch.metadata]
 allow-direct-references = true

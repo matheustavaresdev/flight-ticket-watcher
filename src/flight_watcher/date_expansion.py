@@ -15,8 +15,8 @@ def expand_dates(
     of at most ``max_trip_days`` days.
 
     Args:
-        must_arrive_by: Latest acceptable outbound departure date (you must be
-            at the destination by this date).
+        must_arrive_by: Latest date by which the traveler must have arrived at
+            the destination. This is the upper bound for outbound_dates.
         must_stay_until: Earliest acceptable return departure date (you must
             stay until at least this date).
         max_trip_days: Maximum total trip duration in days (must be positive
