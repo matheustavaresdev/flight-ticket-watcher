@@ -22,6 +22,11 @@ if ! kill -0 "$XVFB_PID" 2>/dev/null; then
     exit 1
 fi
 
+# If custom command provided, skip migrations and exec it directly
+if [ $# -gt 0 ]; then
+    exec "$@"
+fi
+
 # Run database migrations
 alembic upgrade head
 
