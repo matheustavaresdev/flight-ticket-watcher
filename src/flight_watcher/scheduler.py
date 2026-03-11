@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Optional
 
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
@@ -10,6 +11,8 @@ from datetime import timezone
 from flight_watcher.db import get_database_url
 
 logger = logging.getLogger(__name__)
+
+SCAN_HOUR_UTC = int(os.environ.get("SCAN_HOUR_UTC", "3"))
 
 _scheduler: Optional[BackgroundScheduler] = None
 
@@ -76,3 +79,18 @@ def stop_scheduler() -> None:
         _scheduler.shutdown(wait=True)
         logger.info("Scheduler stopped")
         _scheduler = None
+
+
+def register_scan_job() -> None:
+    """Register the daily scan job with the scheduler."""
+    from flight_watcher.orchestrator import run_all_scans
+    scheduler = get_scheduler()
+    scheduler.add_job(
+        run_all_scans,
+        trigger="cron",
+        hour=SCAN_HOUR_UTC,
+        id="daily_scan",
+        replace_existing=True,
+        jitter=1800,
+    )
+    logger.info("Registered daily_scan job at hour=%d UTC (±30min jitter)", SCAN_HOUR_UTC)

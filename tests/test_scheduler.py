@@ -131,3 +131,28 @@ class TestStartStopScheduler(unittest.TestCase):
         get_scheduler()  # populate singleton
         stop_scheduler()
         mock_sched.shutdown.assert_called_once_with(wait=True)
+
+
+class TestRegisterScanJob(unittest.TestCase):
+    def setUp(self):
+        import flight_watcher.scheduler as sched_mod
+        sched_mod._scheduler = None
+
+    def tearDown(self):
+        import flight_watcher.scheduler as sched_mod
+        sched_mod._scheduler = None
+
+    @patch(f"{SCHED_MODULE}.get_scheduler")
+    def test_register_scan_job_adds_cron_trigger(self, mock_get_scheduler):
+        """Verifies scheduler.add_job called with cron trigger and correct params."""
+        mock_sched = MagicMock()
+        mock_get_scheduler.return_value = mock_sched
+
+        from flight_watcher.scheduler import register_scan_job
+        register_scan_job()
+
+        mock_sched.add_job.assert_called_once()
+        call_kwargs = mock_sched.add_job.call_args[1]
+        self.assertEqual(call_kwargs["trigger"], "cron")
+        self.assertEqual(call_kwargs["id"], "daily_scan")
+        self.assertTrue(call_kwargs["replace_existing"])
