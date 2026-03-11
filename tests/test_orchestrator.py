@@ -15,15 +15,14 @@ def _make_config(
     max_trip_days=15,
     active=True,
 ):
-    m = MagicMock()
-    m.id = id
-    m.origin = origin
-    m.destination = destination
-    m.must_arrive_by = must_arrive_by
-    m.must_stay_until = must_stay_until
-    m.max_trip_days = max_trip_days
-    m.active = active
-    return m
+    return {
+        "id": id,
+        "origin": origin,
+        "destination": destination,
+        "must_arrive_by": must_arrive_by,
+        "must_stay_until": must_stay_until,
+        "max_trip_days": max_trip_days,
+    }
 
 
 def _make_flight_result(
@@ -70,28 +69,59 @@ class TestRunAllScans(unittest.TestCase):
     @patch(f"{MODULE}.run_scan")
     def test_run_all_scans_loads_active_configs(self, mock_run_scan, mock_get_session):
         """Verifies query filters by active=True and calls run_scan for each."""
-        config1 = _make_config(id=1)
-        config2 = _make_config(id=2)
+        # ORM-like objects returned by the session (before extraction to dicts)
+        orm1 = MagicMock()
+        orm1.id = 1
+        orm1.origin = "GRU"
+        orm1.destination = "GIG"
+        orm1.must_arrive_by = date(2026, 6, 21)
+        orm1.must_stay_until = date(2026, 6, 28)
+        orm1.max_trip_days = 15
+
+        orm2 = MagicMock()
+        orm2.id = 2
+        orm2.origin = "GRU"
+        orm2.destination = "SSA"
+        orm2.must_arrive_by = date(2026, 7, 1)
+        orm2.must_stay_until = date(2026, 7, 8)
+        orm2.max_trip_days = 10
+
         mock_session = MagicMock()
-        mock_session.scalars.return_value.all.return_value = [config1, config2]
+        mock_session.scalars.return_value.all.return_value = [orm1, orm2]
         mock_get_session.return_value.__enter__ = lambda s: mock_session
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
         from flight_watcher.orchestrator import run_all_scans
         run_all_scans()
 
-        mock_run_scan.assert_any_call(config1)
-        mock_run_scan.assert_any_call(config2)
         self.assertEqual(mock_run_scan.call_count, 2)
+        # Verify dicts are passed (not ORM objects)
+        first_call_arg = mock_run_scan.call_args_list[0][0][0]
+        self.assertIsInstance(first_call_arg, dict)
+        self.assertEqual(first_call_arg["id"], 1)
 
     @patch(f"{MODULE}.get_session")
     @patch(f"{MODULE}.run_scan")
     def test_run_all_scans_continues_on_error(self, mock_run_scan, mock_get_session):
         """Verifies that an error in one config does not stop others."""
-        config1 = _make_config(id=1)
-        config2 = _make_config(id=2)
+        orm1 = MagicMock()
+        orm1.id = 1
+        orm1.origin = "GRU"
+        orm1.destination = "GIG"
+        orm1.must_arrive_by = date(2026, 6, 21)
+        orm1.must_stay_until = date(2026, 6, 28)
+        orm1.max_trip_days = 15
+
+        orm2 = MagicMock()
+        orm2.id = 2
+        orm2.origin = "GRU"
+        orm2.destination = "SSA"
+        orm2.must_arrive_by = date(2026, 7, 1)
+        orm2.must_stay_until = date(2026, 7, 8)
+        orm2.max_trip_days = 10
+
         mock_session = MagicMock()
-        mock_session.scalars.return_value.all.return_value = [config1, config2]
+        mock_session.scalars.return_value.all.return_value = [orm1, orm2]
         mock_get_session.return_value.__enter__ = lambda s: mock_session
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
         mock_run_scan.side_effect = [Exception("boom"), None]
@@ -404,6 +434,20 @@ class TestFlightResultToSnapshot(unittest.TestCase):
         snapshot = _flight_result_to_snapshot(result, scan_run_id=1, search_type=SearchType.ONEWAY)
         self.assertEqual(snapshot.fetched_at.tzinfo, timezone.utc)
 
+    def test_overnight_flight_arrival_advances_one_day(self):
+        """Overnight flights (arrive next day) get arrival_dt bumped by one day."""
+        from flight_watcher.models import SearchType
+        from flight_watcher.orchestrator import _flight_result_to_snapshot
+
+        result = _make_flight_result(
+            date_str="2026-06-13",
+            departure_time="23:00",
+            arrival_time="01:30",
+        )
+        snapshot = _flight_result_to_snapshot(result, scan_run_id=1, search_type=SearchType.ONEWAY)
+        self.assertEqual(snapshot.departure_time, datetime(2026, 6, 13, 23, 0, tzinfo=timezone.utc))
+        self.assertEqual(snapshot.arrival_time, datetime(2026, 6, 14, 1, 30, tzinfo=timezone.utc))
+
 
 class TestRunRoundtripPhase(unittest.TestCase):
     @patch(f"{MODULE}.search_one_way")
@@ -455,3 +499,43 @@ class TestCursorResumption(unittest.TestCase):
 
         # Only 2026-06-15 and 2026-06-28 remain (2 dates × 2 directions = 4 calls)
         self.assertEqual(mock_search.call_count, 4)
+
+
+class TestSearchAndStoreOneway(unittest.TestCase):
+    @patch(f"{MODULE}.search_one_way")
+    def test_search_and_store_oneway_calls_search_and_stores_snapshots(self, mock_search_one_way):
+        """_search_and_store_oneway converts FlightResult list to PriceSnapshot list and calls add_all."""
+        from flight_watcher.models import PriceSnapshot, SearchType
+        from flight_watcher.orchestrator import _search_and_store_oneway
+
+        flight_result = _make_flight_result(
+            origin="GRU",
+            destination="GIG",
+            date_str="2026-06-13",
+            price=450,
+            airline="LATAM",
+            duration_min=90,
+            stops=0,
+            departure_time="08:00",
+            arrival_time="09:30",
+        )
+        mock_search_one_way.return_value = [flight_result]
+
+        mock_session = MagicMock()
+        scan_run = _make_scan_run(id=7)
+
+        count = _search_and_store_oneway(mock_session, scan_run, "GRU", "GIG", "2026-06-13")
+
+        self.assertEqual(count, 1)
+        mock_session.add_all.assert_called_once()
+        added = mock_session.add_all.call_args[0][0]
+        self.assertEqual(len(added), 1)
+        snapshot = added[0]
+        self.assertIsInstance(snapshot, PriceSnapshot)
+        self.assertEqual(snapshot.scan_run_id, 7)
+        self.assertEqual(snapshot.origin, "GRU")
+        self.assertEqual(snapshot.destination, "GIG")
+        self.assertEqual(snapshot.price, Decimal(450))
+        self.assertEqual(snapshot.brand, "ECONOMY")
+        self.assertEqual(snapshot.search_type, SearchType.ONEWAY)
+        self.assertEqual(snapshot.flight_date, date(2026, 6, 13))

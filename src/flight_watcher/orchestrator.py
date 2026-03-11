@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -24,25 +24,44 @@ logger = logging.getLogger(__name__)
 def run_all_scans() -> None:
     """Top-level entry: load active configs, run scan for each."""
     with get_session() as session:
-        configs = session.scalars(select(SearchConfig).where(SearchConfig.active == True)).all()
+        rows = session.scalars(select(SearchConfig).where(SearchConfig.active == True)).all()  # noqa: E712
+        # Extract plain scalars while session is open to avoid DetachedInstanceError
+        configs = [
+            {
+                "id": r.id,
+                "origin": r.origin,
+                "destination": r.destination,
+                "must_arrive_by": r.must_arrive_by,
+                "must_stay_until": r.must_stay_until,
+                "max_trip_days": r.max_trip_days,
+            }
+            for r in rows
+        ]
     logger.info("Running scans for %d active config(s)", len(configs))
     for config in configs:
         try:
             run_scan(config)
         except Exception as exc:
-            logger.error("Unhandled error in run_scan for config %d: %s", config.id, exc)
+            # Detailed error is already logged inside run_scan; catch here only to continue
+            pass  # noqa: S110
 
 
-def run_scan(config: SearchConfig) -> None:
-    """Run a full scan for one SearchConfig."""
+def run_scan(config: dict) -> None:
+    """Run a full scan for one SearchConfig.
+
+    Args:
+        config: Plain dict with keys id, origin, destination, must_arrive_by,
+                must_stay_until, max_trip_days. Using a dict (not ORM object)
+                prevents DetachedInstanceError after the loading session closes.
+    """
     outbound_dates, return_dates = expand_dates(
-        config.must_arrive_by, config.must_stay_until, config.max_trip_days
+        config["must_arrive_by"], config["must_stay_until"], config["max_trip_days"]
     )
     all_dates = sorted(set(outbound_dates + return_dates))
 
     with get_session() as session:
         # Check for a resumable run from today
-        resumable = _find_resumable_run(session, config.id)
+        resumable = _find_resumable_run(session, config["id"])
         cursor: date | None = None
 
         if resumable is not None:
@@ -52,38 +71,41 @@ def run_scan(config: SearchConfig) -> None:
             scan_run.error_message = None
             logger.info(
                 "Resuming scan run %d for config %d from cursor %s",
-                scan_run.id, config.id, cursor,
+                scan_run.id, config["id"], cursor,
             )
         else:
             scan_run = ScanRun(
-                search_config_id=config.id,
+                search_config_id=config["id"],
                 status=ScanStatus.RUNNING,
             )
             session.add(scan_run)
             session.flush()
-            logger.info("Started scan run %d for config %d", scan_run.id, config.id)
+            logger.info("Started scan run %d for config %d", scan_run.id, config["id"])
 
         remaining_dates = _dates_after_cursor(all_dates, cursor)
         logger.info(
             "Scanning %d date(s) for config %d (origin=%s, dest=%s)",
-            len(remaining_dates), config.id, config.origin, config.destination,
+            len(remaining_dates), config["id"], config["origin"], config["destination"],
         )
 
         try:
             for flight_date in remaining_dates:
                 # Outbound direction: origin → destination
                 count_out = _search_and_store_oneway(
-                    session, scan_run, config.origin, config.destination, flight_date
+                    session, scan_run, config["origin"], config["destination"], flight_date
                 )
                 random_delay()
 
                 # Return direction: destination → origin
                 count_ret = _search_and_store_oneway(
-                    session, scan_run, config.destination, config.origin, flight_date
+                    session, scan_run, config["destination"], config["origin"], flight_date
                 )
                 random_delay()
 
                 scan_run.last_successful_date = date.fromisoformat(flight_date)
+                # NOTE: cursor is flushed but not committed until the full run completes.
+                # A crash loses all progress for this run; the next run will re-scan from
+                # the last *committed* cursor (i.e. the previous successful run's position).
                 session.flush()
                 logger.debug(
                     "Date %s: stored %d outbound + %d return snapshots",
@@ -107,10 +129,12 @@ def run_scan(config: SearchConfig) -> None:
 def _find_resumable_run(session: Session, config_id: int) -> ScanRun | None:
     """Find today's failed/running ScanRun for this config to resume from."""
     today = datetime.now(tz=timezone.utc).date()
+    today_start = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
     result = session.scalars(
         select(ScanRun)
         .where(ScanRun.search_config_id == config_id)
         .where(ScanRun.status.in_([ScanStatus.FAILED, ScanStatus.RUNNING]))
+        .where(ScanRun.started_at >= today_start)
         .order_by(ScanRun.started_at.desc())
         .limit(1)
     ).first()
@@ -160,6 +184,8 @@ def _flight_result_to_snapshot(
     arr_hour, arr_min = map(int, result.arrival_time.split(":"))
     departure_dt = datetime(flight_date.year, flight_date.month, flight_date.day, dep_hour, dep_min, tzinfo=timezone.utc)
     arrival_dt = datetime(flight_date.year, flight_date.month, flight_date.day, arr_hour, arr_min, tzinfo=timezone.utc)
+    if arrival_dt < departure_dt:
+        arrival_dt += timedelta(days=1)
     return PriceSnapshot(
         scan_run_id=scan_run_id,
         origin=result.origin,
@@ -181,7 +207,7 @@ def _flight_result_to_snapshot(
 def _run_roundtrip_phase(
     session: Session,
     scan_run: ScanRun,
-    config: SearchConfig,
+    config: dict,
     outbound_dates: list[str],
     return_dates: list[str],
 ) -> int:
