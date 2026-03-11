@@ -124,12 +124,30 @@ Prompt template:
 
 Run via Bash tool with `run_in_background: true`.
 
+**CRITICAL — TWO-STEP PROCESS. DO NOT PIPE.**
+
+Codex CLI cannot be piped (`|`) — it detects non-terminal stdout and changes argument parsing, causing failures. The `-o/--output-last-message` flag also does not work with `exec review` (writes empty files). Use `--json` mode with file redirect, then extract with `jq` in a **separate** command.
+
+**Hardcode the literal output path.** Do NOT use shell variables. Substitute actual values directly.
+
 ```bash
+# Step 1: Codex writes JSON events to temp file (MUST use file redirect, NOT pipe)
 codex exec review \
   --base main \
   --full-auto \
   --ephemeral \
-  -o ".reviews/ACTUAL-SHORT-BRANCH-HERE/codex-review.md"
+  -m gpt-5.4 \
+  --json \
+  > ".reviews/ACTUAL-SHORT-BRANCH-HERE/codex-raw.jsonl" \
+  2>/dev/null
+
+# Step 2: Extract review text from agent_message events (SEPARATE command, not piped)
+jq -rs '[.[] | select(.item.type == "agent_message")] | map(.item.text) | join("\n\n")' \
+  ".reviews/ACTUAL-SHORT-BRANCH-HERE/codex-raw.jsonl" \
+  > ".reviews/ACTUAL-SHORT-BRANCH-HERE/codex-review.md"
+
+# Step 3: Cleanup temp file
+rm -f ".reviews/ACTUAL-SHORT-BRANCH-HERE/codex-raw.jsonl"
 ```
 
 If Codex fails or times out, note the failure but do not block.
