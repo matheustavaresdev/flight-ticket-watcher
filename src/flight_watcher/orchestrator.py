@@ -41,7 +41,7 @@ def run_all_scans() -> None:
     for config in configs:
         try:
             run_scan(config)
-        except Exception as exc:
+        except Exception:  # noqa: BLE001
             # Detailed error is already logged inside run_scan; catch here only to continue
             pass  # noqa: S110
 
