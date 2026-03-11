@@ -37,4 +37,7 @@ def scheduler():
 
 
 if __name__ == "__main__":
-    cli()
+    if not sys.argv[1:]:
+        main()
+    else:
+        cli()

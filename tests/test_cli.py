@@ -163,6 +163,7 @@ class TestConfigList:
         assert result.exit_code == 0, result.output
         assert "FOR" in result.output
         assert "MIA" in result.output
+        assert "GRU" not in result.output
         # Header should be present
         assert "ID" in result.output
         assert "Origin" in result.output
