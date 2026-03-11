@@ -4,9 +4,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from flight_watcher.models import PriceSnapshot, SearchConfig, SearchType, ScanStatus
+from flight_watcher.models import PriceSnapshot, SearchConfig, SearchType
 from flight_watcher.queries import best_combinations, get_latest_snapshots, roundtrip_vs_oneway
 
 
@@ -201,6 +199,31 @@ class TestBestCombinations:
         totals = [r["total_price"] for r in results]
         assert totals == sorted(totals)
 
+    def test_includes_same_day_turnaround(self):
+        """Same-day turnaround (trip_days == 0) should appear when max_trip_days >= 0."""
+        config = _make_config(
+            origin="GRU",
+            destination="FOR",
+            must_arrive_by=date(2024, 7, 31),
+            must_stay_until=date(2024, 7, 10),
+            max_trip_days=14,
+        )
+        same_date = date(2024, 7, 10)
+        out_snap = _make_snapshot(origin="GRU", destination="FOR", flight_date=same_date, price="800.00")
+        ret_snap = _make_snapshot(origin="FOR", destination="GRU", flight_date=same_date, price="700.00")
+
+        mock_session = self._make_session(config, [out_snap, ret_snap])
+
+        with patch("flight_watcher.queries.get_latest_snapshots", return_value=[out_snap, ret_snap]):
+            results = best_combinations(mock_session, search_config_id=1)
+
+        assert len(results) == 1
+        r = results[0]
+        assert r["outbound_date"] == same_date
+        assert r["return_date"] == same_date
+        assert r["trip_days"] == 0
+        assert r["total_price"] == Decimal("1500.00")
+
 
 class TestRoundtripVsOneway:
     def _make_session(self, config):
@@ -371,3 +394,30 @@ class TestRoundtripVsOneway:
             results = roundtrip_vs_oneway(mock_session, search_config_id=1)
 
         assert results == []
+
+    def test_includes_same_day_pairs(self):
+        """Same-day pairs (trip_days == 0) should appear when max_trip_days >= 0."""
+        config = _make_config(
+            origin="GRU", destination="FOR",
+            must_arrive_by=date(2024, 7, 31),
+            must_stay_until=date(2024, 7, 1),
+            max_trip_days=30,
+        )
+        same_date = date(2024, 7, 10)
+        rt_out = _make_snapshot(origin="GRU", destination="FOR", flight_date=same_date, price="400.00", search_type=SearchType.ROUNDTRIP)
+        rt_ret = _make_snapshot(origin="FOR", destination="GRU", flight_date=same_date, price="400.00", search_type=SearchType.ROUNDTRIP)
+        ow_out = _make_snapshot(origin="GRU", destination="FOR", flight_date=same_date, price="600.00", search_type=SearchType.ONEWAY)
+        ow_ret = _make_snapshot(origin="FOR", destination="GRU", flight_date=same_date, price="600.00", search_type=SearchType.ONEWAY)
+
+        mock_session = self._make_session(config)
+        snaps = [rt_out, rt_ret, ow_out, ow_ret]
+
+        with patch("flight_watcher.queries.get_latest_snapshots", return_value=snaps):
+            results = roundtrip_vs_oneway(mock_session, search_config_id=1)
+
+        assert len(results) == 1
+        r = results[0]
+        assert r["outbound_date"] == same_date
+        assert r["return_date"] == same_date
+        assert r["roundtrip_total"] == Decimal("800.00")
+        assert r["oneway_total"] == Decimal("1200.00")

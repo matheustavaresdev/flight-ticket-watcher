@@ -109,7 +109,7 @@ def best_combinations(
     for out_date, (out_price, currency) in cheapest_out.items():
         for ret_date, (ret_price, _) in cheapest_ret.items():
             trip_days = (ret_date - out_date).days
-            if trip_days <= 0 or trip_days > config.max_trip_days:
+            if trip_days < 0 or trip_days > config.max_trip_days:
                 continue
             total_price = out_price + ret_price
             existing = results_by_trip_days.get(trip_days)
@@ -168,11 +168,14 @@ def roundtrip_vs_oneway(
     out_dates = set(rt_out) & set(ow_out)
     ret_dates = set(rt_ret) & set(ow_ret)
 
+    # Cartesian product of all observed outbound × return dates. Legs are stored
+    # independently without a pairing key, so this may include date pairs that were
+    # never searched as a single roundtrip — a known approximation.
     results = []
     for out_date in sorted(out_dates):
         for ret_date in sorted(ret_dates):
             trip_days = (ret_date - out_date).days
-            if trip_days <= 0 or trip_days > config.max_trip_days:
+            if trip_days < 0 or trip_days > config.max_trip_days:
                 continue
             rt_total = rt_out[out_date] + rt_ret[ret_date]
             ow_total = ow_out[out_date] + ow_ret[ret_date]
