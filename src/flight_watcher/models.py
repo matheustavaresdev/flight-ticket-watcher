@@ -81,8 +81,7 @@ class ScanRun(Base):
     price_snapshots: Mapped[list["PriceSnapshot"]] = relationship(back_populates="scan_run")
 
     __table_args__ = (
-        Index("ix_scan_runs_config_id", "search_config_id"),
-        Index("ix_scan_runs_status", "status"),
+        Index("ix_scan_runs_config_status", "search_config_id", "status"),
     )
 
 
@@ -110,4 +109,6 @@ class PriceSnapshot(Base):
     __table_args__ = (
         Index("ix_price_snapshots_run_id", "scan_run_id"),
         Index("ix_price_snapshots_route_date", "origin", "destination", "flight_date"),
+        Index("ix_price_snapshots_route_date_brand", "origin", "destination", "flight_date", "brand"),
+        Index("ix_price_snapshots_date_fetched", "flight_date", "fetched_at"),
     )
