@@ -1,4 +1,3 @@
-import logging
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -156,3 +155,58 @@ class TestRegisterScanJob(unittest.TestCase):
         self.assertEqual(call_kwargs["trigger"], "cron")
         self.assertEqual(call_kwargs["id"], "daily_scan")
         self.assertTrue(call_kwargs["replace_existing"])
+
+
+class TestJobListenerStateSideEffects(unittest.TestCase):
+    def setUp(self):
+        import flight_watcher.scheduler as sched_mod
+        import flight_watcher.scanner_state as state_mod
+        sched_mod._scheduler = None
+        state_mod._state = None
+
+    def tearDown(self):
+        import flight_watcher.scheduler as sched_mod
+        import flight_watcher.scanner_state as state_mod
+        sched_mod._scheduler = None
+        state_mod._state = None
+
+    def test_on_job_submitted_sets_scanning(self):
+        from flight_watcher.scanner_state import ScannerStatus, get_scanner_state
+        from flight_watcher.scheduler import _on_job_submitted
+        event = MagicMock()
+        event.job_id = "test_job"
+        _on_job_submitted(event)
+        self.assertEqual(get_scanner_state().status, ScannerStatus.SCANNING)
+
+    def test_on_job_executed_sets_idle(self):
+        from flight_watcher.scanner_state import ScannerStatus, get_scanner_state
+        from flight_watcher.scheduler import _on_job_executed
+        get_scanner_state().status = ScannerStatus.SCANNING
+        event = MagicMock()
+        event.job_id = "test_job"
+        event.retval = None
+        _on_job_executed(event)
+        self.assertEqual(get_scanner_state().status, ScannerStatus.IDLE)
+
+    def test_on_job_error_sets_idle(self):
+        from flight_watcher.scanner_state import ScannerStatus, get_scanner_state
+        from flight_watcher.scheduler import _on_job_error
+        get_scanner_state().status = ScannerStatus.SCANNING
+        event = MagicMock()
+        event.job_id = "test_job"
+        event.exception = ValueError("boom")
+        event.traceback = None
+        _on_job_error(event)
+        self.assertEqual(get_scanner_state().status, ScannerStatus.IDLE)
+
+    @patch("flight_watcher.scheduler.get_database_url", return_value="postgresql+psycopg://user:pass@localhost/db")
+    @patch("flight_watcher.scheduler.SQLAlchemyJobStore")
+    @patch("flight_watcher.scheduler.BackgroundScheduler")
+    def test_create_scheduler_registers_submitted_listener(self, mock_bg, mock_store, mock_url):
+        from flight_watcher.scheduler import create_scheduler
+        from apscheduler.events import EVENT_JOB_SUBMITTED
+        create_scheduler()
+        mock_sched = mock_bg.return_value
+        listener_calls = mock_sched.add_listener.call_args_list
+        submitted_calls = [c for c in listener_calls if c[0][1] == EVENT_JOB_SUBMITTED]
+        self.assertTrue(len(submitted_calls) > 0)
