@@ -52,8 +52,9 @@ class TestScanRun:
 
     def test_indexes(self):
         index_names = {idx.name for idx in ScanRun.__table__.indexes}
-        assert "ix_scan_runs_config_id" in index_names
-        assert "ix_scan_runs_status" in index_names
+        assert "ix_scan_runs_config_status" in index_names
+        assert "ix_scan_runs_config_id" not in index_names
+        assert "ix_scan_runs_status" not in index_names
 
 
 class TestPriceSnapshot:
@@ -88,6 +89,8 @@ class TestPriceSnapshot:
         index_names = {idx.name for idx in PriceSnapshot.__table__.indexes}
         assert "ix_price_snapshots_run_id" in index_names
         assert "ix_price_snapshots_route_date" in index_names
+        assert "ix_price_snapshots_route_date_brand" in index_names
+        assert "ix_price_snapshots_date_fetched" in index_names
 
 
 class TestEnums:

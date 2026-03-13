@@ -66,3 +66,59 @@ def test_validation_stay_until_before_arrive_by():
     """must_stay_until before must_arrive_by raises ValueError."""
     with pytest.raises(ValueError, match="must_stay_until.*must be on or after"):
         expand_dates(date(2026, 6, 28), date(2026, 6, 21), 15)
+
+
+def test_month_boundary_spanning():
+    """Dates spanning a month boundary: arrive by May 28, stay until June 2, max 10 days."""
+    # earliest_departure = June 2 - 10 = May 23
+    # latest_return = May 28 + 10 = June 7
+    out, ret = expand_dates(date(2026, 5, 28), date(2026, 6, 2), 10)
+
+    assert out[0] == "2026-05-23"
+    assert out[-1] == "2026-05-28"
+    assert ret[0] == "2026-06-02"
+    assert ret[-1] == "2026-06-07"
+    # outbound in May, return in June
+    assert all(d.startswith("2026-05") for d in out)
+    assert all(d.startswith("2026-06") for d in ret)
+
+
+def test_large_window_30_plus_days():
+    """30+ day max trip: arrive by June 1, stay until June 5, max 35 days."""
+    # earliest_departure = June 5 - 35 = May 1
+    # latest_return = June 1 + 35 = July 6
+    out, ret = expand_dates(date(2026, 6, 1), date(2026, 6, 5), 35)
+
+    assert out[0] == "2026-05-01"
+    assert out[-1] == "2026-06-01"
+    assert len(out) == 32  # May 1 to June 1 inclusive
+
+    assert ret[0] == "2026-06-05"
+    assert ret[-1] == "2026-07-06"
+    assert len(ret) == 32  # June 5 to July 6 inclusive
+
+
+def test_single_day_max_trip_equals_one():
+    """max_trip_days=1 with same-day arrive/stay: outbound and return each span 2 dates."""
+    # must_arrive_by = must_stay_until = June 15
+    # earliest_departure = June 15 - 1 = June 14
+    # latest_return = June 15 + 1 = June 16
+    out, ret = expand_dates(date(2026, 6, 15), date(2026, 6, 15), 1)
+
+    assert out == ["2026-06-14", "2026-06-15"]
+    assert ret == ["2026-06-15", "2026-06-16"]
+
+
+def test_year_boundary():
+    """Dates spanning year boundary: arrive by Dec 30, stay until Jan 2, max 10 days."""
+    # earliest_departure = Jan 2, 2027 - 10 = Dec 23, 2026
+    # latest_return = Dec 30, 2026 + 10 = Jan 9, 2027
+    out, ret = expand_dates(date(2026, 12, 30), date(2027, 1, 2), 10)
+
+    assert out[0] == "2026-12-23"
+    assert out[-1] == "2026-12-30"
+    assert len(out) == 8  # Dec 23–30 inclusive
+
+    assert ret[0] == "2027-01-02"
+    assert ret[-1] == "2027-01-09"
+    assert len(ret) == 8  # Jan 2–9 inclusive
