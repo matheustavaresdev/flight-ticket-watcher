@@ -86,16 +86,17 @@ def search_latam(
         url = _build_latam_url(origin, destination, outbound, inbound, trip="RT")
 
         try:
-            with page.expect_response(
-                lambda r: "bff/air-offers/v2/offers/search" in r.url and r.status == 200,
-                timeout=30_000,
-            ):
-                page.goto(url, wait_until="domcontentloaded")
-        except Exception as exc:
-            category = classify_error(exc)
-            logger.warning("latam search failed (category=%s): %s", category.value, exc)
-
-        context.close()
+            try:
+                with page.expect_response(
+                    lambda r: "bff/air-offers/v2/offers/search" in r.url and r.status == 200,
+                    timeout=30_000,
+                ):
+                    page.goto(url, wait_until="domcontentloaded")
+            except Exception as exc:
+                category = classify_error(exc)
+                logger.warning("latam search failed (category=%s): %s", category.value, exc)
+        finally:
+            context.close()
         browser.close()
 
     elapsed = time.time() - start
@@ -140,16 +141,17 @@ def search_latam_oneway(
         url = _build_latam_url(origin, destination, outbound, trip="OW")
 
         try:
-            with page.expect_response(
-                lambda r: "bff/air-offers/v2/offers/search" in r.url and r.status == 200,
-                timeout=30_000,
-            ):
-                page.goto(url, wait_until="domcontentloaded")
-        except Exception as exc:
-            category = classify_error(exc)
-            logger.warning("latam search failed (category=%s): %s", category.value, exc)
-
-        context.close()
+            try:
+                with page.expect_response(
+                    lambda r: "bff/air-offers/v2/offers/search" in r.url and r.status == 200,
+                    timeout=30_000,
+                ):
+                    page.goto(url, wait_until="domcontentloaded")
+            except Exception as exc:
+                category = classify_error(exc)
+                logger.warning("latam search failed (category=%s): %s", category.value, exc)
+        finally:
+            context.close()
         browser.close()
 
     elapsed = time.time() - start
@@ -382,7 +384,7 @@ if __name__ == "__main__":
         print_offers(offers)
 
         # Feasibility assessment
-        print(f"\n--- Feasibility Result ---")
+        print("\n--- Feasibility Result ---")
         print(f"Total offers: {len(offers)}")
         has_brands = any(len(o['brands']) > 0 for o in offers)
         print(f"Has fare classes (brands): {has_brands}")
