@@ -36,8 +36,11 @@ def main():
     start_scheduler()
     register_scan_job()
 
-    while True:
-        time.sleep(1)
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        _shutdown()
 
 
 @cli.command("scheduler")
