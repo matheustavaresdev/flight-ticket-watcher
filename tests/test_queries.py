@@ -1,11 +1,19 @@
 """Tests for flight_watcher.queries."""
 
+from __future__ import annotations
+
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from flight_watcher.models import PriceSnapshot, SearchConfig, SearchType
-from flight_watcher.queries import best_combinations, get_latest_snapshots, roundtrip_vs_oneway
+from flight_watcher.queries import (
+    best_combinations,
+    get_latest_snapshots,
+    price_history,
+    price_trend_summary,
+    roundtrip_vs_oneway,
+)
 
 
 def _make_config(
@@ -52,6 +60,34 @@ def _make_snapshot(
     snap.search_type = search_type
     snap.fetched_at = fetched_at or datetime(2024, 7, 1, 12, 0, tzinfo=timezone.utc)
     return snap
+
+
+def _make_mock_snapshot(
+    price="1000.00",
+    fetched_at=None,
+    origin="FOR",
+    destination="MIA",
+    flight_date=None,
+    brand="LIGHT",
+    search_type=SearchType.ONEWAY,
+):
+    """Mock-based snapshot for price_history/trend tests."""
+    snap = MagicMock(spec=PriceSnapshot)
+    snap.price = Decimal(price)
+    snap.fetched_at = fetched_at or datetime(2026, 3, 1, 10, 0, tzinfo=timezone.utc)
+    snap.origin = origin
+    snap.destination = destination
+    snap.flight_date = flight_date or date(2026, 6, 21)
+    snap.brand = brand
+    snap.search_type = search_type
+    return snap
+
+
+def _mock_session_with_all(snapshots):
+    """Session mock that returns snapshots via .execute().scalars().all()."""
+    mock_session = MagicMock()
+    mock_session.execute.return_value.scalars.return_value.all.return_value = snapshots
+    return mock_session
 
 
 class TestGetLatestSnapshots:
@@ -421,3 +457,184 @@ class TestRoundtripVsOneway:
         assert r["return_date"] == same_date
         assert r["roundtrip_total"] == Decimal("800.00")
         assert r["oneway_total"] == Decimal("1200.00")
+
+
+class TestPriceHistory:
+    def test_returns_snapshots_ordered_by_fetched_at(self):
+        t1 = datetime(2026, 3, 1, 8, 0, tzinfo=timezone.utc)
+        t2 = datetime(2026, 3, 1, 10, 0, tzinfo=timezone.utc)
+        t3 = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
+        snap1 = _make_mock_snapshot(fetched_at=t1)
+        snap2 = _make_mock_snapshot(fetched_at=t2)
+        snap3 = _make_mock_snapshot(fetched_at=t3)
+
+        session = _mock_session_with_all([snap1, snap2, snap3])
+        result = price_history(session, "FOR", "MIA", date(2026, 6, 21))
+
+        assert result is not None
+        assert result.snapshots == [snap1, snap2, snap3]
+        assert result.snapshots[0].fetched_at == t1
+        assert result.snapshots[2].fetched_at == t3
+
+    def test_computes_min_max_avg(self):
+        snap1 = _make_mock_snapshot(price="1000.00")
+        snap2 = _make_mock_snapshot(price="1500.00")
+        snap3 = _make_mock_snapshot(price="2000.00")
+
+        session = _mock_session_with_all([snap1, snap2, snap3])
+        result = price_history(session, "FOR", "MIA", date(2026, 6, 21))
+
+        assert result is not None
+        assert result.min_price == Decimal("1000.00")
+        assert result.max_price == Decimal("2000.00")
+        assert result.avg_price == Decimal("1500.00")
+
+    def test_returns_none_when_no_data(self):
+        session = _mock_session_with_all([])
+        result = price_history(session, "FOR", "MIA", date(2026, 6, 21))
+        assert result is None
+
+    def test_filters_by_brand(self):
+        snap = _make_mock_snapshot(brand="STANDARD")
+        session = _mock_session_with_all([snap])
+        result = price_history(session, "FOR", "MIA", date(2026, 6, 21), brand="STANDARD")
+        assert result is not None
+        session.execute.assert_called_once()
+
+    def test_filters_by_search_type(self):
+        snap = _make_mock_snapshot(search_type=SearchType.ROUNDTRIP)
+        session = _mock_session_with_all([snap])
+        result = price_history(
+            session, "FOR", "MIA", date(2026, 6, 21), search_type=SearchType.ROUNDTRIP
+        )
+        assert result is not None
+        session.execute.assert_called_once()
+
+    def test_min_price_seen_at(self):
+        t1 = datetime(2026, 3, 1, 8, 0, tzinfo=timezone.utc)
+        t2 = datetime(2026, 3, 1, 10, 0, tzinfo=timezone.utc)
+        t3 = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
+        snap1 = _make_mock_snapshot(price="2000.00", fetched_at=t1)
+        snap2 = _make_mock_snapshot(price="500.00", fetched_at=t2)
+        snap3 = _make_mock_snapshot(price="1000.00", fetched_at=t3)
+
+        session = _mock_session_with_all([snap1, snap2, snap3])
+        result = price_history(session, "FOR", "MIA", date(2026, 6, 21))
+
+        assert result is not None
+        assert result.min_price_seen_at == t2
+
+
+class TestPriceTrendSummary:
+    def _make_trend_snapshots(
+        self,
+        prices,
+        flight_date=None,
+        search_type=SearchType.ONEWAY,
+    ):
+        fd = flight_date or date(2026, 6, 21)
+        snaps = []
+        for i, price in enumerate(prices):
+            snap = _make_mock_snapshot(
+                price=price,
+                fetched_at=datetime(2026, 3, 1, i, 0, tzinfo=timezone.utc),
+                flight_date=fd,
+                search_type=search_type,
+            )
+            snaps.append(snap)
+        return snaps
+
+    def test_rising_price(self):
+        # 6 at 1000, latest at 1100.
+        # rolling window (last 7, inclusive) = [1000]*6 + [1100]
+        # rolling_avg ≈ 1014.28, pct_diff ≈ 8.45% > 5 → "↑"
+        prices = ["1000.00"] * 6 + ["1100.00"]
+        snaps = self._make_trend_snapshots(prices)
+        session = _mock_session_with_all(snaps)
+
+        result = price_trend_summary(session, search_config_id=1)
+
+        assert len(result) == 1
+        assert result[0]["direction"] == "↑"
+
+    def test_dropping_price(self):
+        # 6 at 1000, latest at 900.
+        # rolling_avg ≈ 985.71, pct_diff ≈ -8.70% < -5 → "↓"
+        prices = ["1000.00"] * 6 + ["900.00"]
+        snaps = self._make_trend_snapshots(prices)
+        session = _mock_session_with_all(snaps)
+
+        result = price_trend_summary(session, search_config_id=1)
+
+        assert len(result) == 1
+        assert result[0]["direction"] == "↓"
+
+    def test_stable_price(self):
+        # 6 at 1000, latest at 1020.
+        # rolling_avg ≈ 1002.86, pct_diff ≈ 1.71% → within ±5 → "→"
+        prices = ["1000.00"] * 6 + ["1020.00"]
+        snaps = self._make_trend_snapshots(prices)
+        session = _mock_session_with_all(snaps)
+
+        result = price_trend_summary(session, search_config_id=1)
+
+        assert len(result) == 1
+        assert result[0]["direction"] == "→"
+
+    def test_empty_when_no_data(self):
+        session = _mock_session_with_all([])
+        result = price_trend_summary(session, search_config_id=1)
+        assert result == []
+
+    def test_rolling_avg_uses_last_7(self):
+        # First 3 at 500, last 7 at 1000 (10 total).
+        # Last 7 = all 1000s → rolling_avg = 1000, current = 1000.
+        prices = ["500.00"] * 3 + ["1000.00"] * 7
+        snaps = self._make_trend_snapshots(prices)
+        session = _mock_session_with_all(snaps)
+
+        result = price_trend_summary(session, search_config_id=1)
+
+        assert len(result) == 1
+        assert result[0]["rolling_avg_7d"] == Decimal("1000.00")
+        assert result[0]["current_price"] == Decimal("1000.00")
+
+    def test_sorted_by_flight_date(self):
+        d1 = date(2026, 6, 25)
+        d2 = date(2026, 6, 21)
+        d3 = date(2026, 6, 23)
+
+        snap1 = _make_mock_snapshot(
+            flight_date=d1, fetched_at=datetime(2026, 3, 1, 1, 0, tzinfo=timezone.utc)
+        )
+        snap2 = _make_mock_snapshot(
+            flight_date=d2, fetched_at=datetime(2026, 3, 1, 2, 0, tzinfo=timezone.utc)
+        )
+        snap3 = _make_mock_snapshot(
+            flight_date=d3, fetched_at=datetime(2026, 3, 1, 3, 0, tzinfo=timezone.utc)
+        )
+
+        session = _mock_session_with_all([snap1, snap2, snap3])
+        result = price_trend_summary(session, search_config_id=1)
+
+        assert len(result) == 3
+        assert result[0]["flight_date"] == d2
+        assert result[1]["flight_date"] == d3
+        assert result[2]["flight_date"] == d1
+
+    def test_pct_diff_calculation(self):
+        # 6 at 1000, current at 1100.
+        # rolling window (last 7) = [1000,1000,1000,1000,1000,1000,1100]
+        # Verify pct_diff matches the formula: (current - rolling_avg) / rolling_avg * 100
+        prices = ["1000.00"] * 6 + ["1100.00"]
+        snaps = self._make_trend_snapshots(prices)
+        session = _mock_session_with_all(snaps)
+
+        result = price_trend_summary(session, search_config_id=1)
+
+        assert len(result) == 1
+        all_prices = [Decimal(p) for p in prices]
+        rolling_avg = sum(all_prices[-7:], Decimal("0")) / Decimal(7)
+        current = Decimal("1100.00")
+        expected_pct = float((current - rolling_avg) / rolling_avg * Decimal("100"))
+        assert abs(result[0]["pct_diff"] - expected_pct) < 0.001
