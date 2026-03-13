@@ -4,7 +4,7 @@ import sys
 import time
 
 from flight_watcher.cli import cli
-from flight_watcher.scheduler import start_scheduler, stop_scheduler
+from flight_watcher.scheduler import register_scan_job, start_scheduler, stop_scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
@@ -22,6 +22,7 @@ def main():
     signal.signal(signal.SIGINT, _handle_signal)
 
     start_scheduler()
+    register_scan_job()
 
     try:
         while True:
