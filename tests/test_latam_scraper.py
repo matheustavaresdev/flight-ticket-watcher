@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch, call
 
+from flight_watcher.browser_profiles import BrowserProfile
 from flight_watcher.latam_scraper import (
     _build_latam_url,
     parse_offers,
@@ -10,6 +11,13 @@ from flight_watcher.latam_scraper import (
 )
 
 SEARCH_MODULE = "flight_watcher.latam_scraper"
+
+_FIXED_PROFILE = BrowserProfile(
+    locale="pt-BR",
+    timezone_id="America/Sao_Paulo",
+    viewport_width=1920,
+    viewport_height=1080,
+)
 
 
 def _make_bff_response(origin: str, destination: str, brand_price: float = 1000.0) -> dict:
@@ -52,8 +60,11 @@ def _setup_roundtrip_mocks(mock_pw, outbound_resp, return_resp=None):
     Returns (mock_page, captured_on_response_callback).
     """
     mock_browser = MagicMock()
+    mock_context = MagicMock()
     mock_page = MagicMock()
-    mock_browser.new_page.return_value = mock_page
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+    mock_context.close = MagicMock()
     mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = mock_browser
 
     # Capture the on_response callback so we can simulate BFF responses
@@ -128,16 +139,17 @@ def _setup_roundtrip_mocks(mock_pw, outbound_resp, return_resp=None):
     mock_continuar = MagicMock()
     mock_page.get_by_role.return_value = mock_continuar
 
-    return mock_page, captured_cb
+    return mock_page, captured_cb, mock_context
 
 
+@patch(f"{SEARCH_MODULE}.get_random_profile", return_value=_FIXED_PROFILE)
 @patch(f"{SEARCH_MODULE}.sync_playwright")
-def test_roundtrip_captures_both_legs(mock_pw):
+def test_roundtrip_captures_both_legs(mock_pw, mock_profile):
     """Happy path: both outbound and return BFF responses are captured."""
     outbound_resp = _make_bff_response("FOR", "GRU", brand_price=1000.0)
     return_resp = _make_bff_response("GRU", "FOR", brand_price=1200.0)
 
-    mock_page, _ = _setup_roundtrip_mocks(mock_pw, outbound_resp, return_resp)
+    mock_page, _, mock_context = _setup_roundtrip_mocks(mock_pw, outbound_resp, return_resp)
 
     outbound, ret = search_latam_roundtrip("FOR", "GRU", "2026-04-12", "2026-04-17")
 
@@ -152,13 +164,20 @@ def test_roundtrip_captures_both_legs(mock_pw):
     mock_page.locator.assert_any_call('[data-testid="bundle-detail-0-flight-select"]')
     mock_page.get_by_role.assert_called_once_with("button", name="Continuar")
 
+    # Verify context is closed
+    mock_context.close.assert_called_once()
 
+
+@patch(f"{SEARCH_MODULE}.get_random_profile", return_value=_FIXED_PROFILE)
 @patch(f"{SEARCH_MODULE}.sync_playwright")
-def test_roundtrip_returns_none_when_outbound_times_out(mock_pw):
+def test_roundtrip_returns_none_when_outbound_times_out(mock_pw, mock_profile):
     """When outbound BFF never arrives, return (None, None)."""
     mock_browser = MagicMock()
+    mock_context = MagicMock()
     mock_page = MagicMock()
-    mock_browser.new_page.return_value = mock_page
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+    mock_context.close = MagicMock()
     mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = mock_browser
     mock_page.on = MagicMock()
 
@@ -172,15 +191,17 @@ def test_roundtrip_returns_none_when_outbound_times_out(mock_pw):
 
     assert outbound is None
     assert ret is None
+    mock_context.close.assert_called_once()
     mock_browser.close.assert_called_once()
 
 
+@patch(f"{SEARCH_MODULE}.get_random_profile", return_value=_FIXED_PROFILE)
 @patch(f"{SEARCH_MODULE}.sync_playwright")
-def test_roundtrip_returns_none_return_when_cabin_click_fails(mock_pw):
+def test_roundtrip_returns_none_return_when_cabin_click_fails(mock_pw, mock_profile):
     """When Economy cabin button click fails, return (outbound_data, None)."""
     outbound_resp = _make_bff_response("FOR", "GRU")
 
-    mock_page, _ = _setup_roundtrip_mocks(mock_pw, outbound_resp, None)
+    mock_page, _, mock_context = _setup_roundtrip_mocks(mock_pw, outbound_resp, None)
     # Make cabin button click raise an exception
     mock_cabin = MagicMock()
     mock_cabin.first.click.side_effect = Exception("Click timeout")
@@ -198,6 +219,7 @@ def test_roundtrip_returns_none_return_when_cabin_click_fails(mock_pw):
 
     assert outbound is not None
     assert ret is None
+    mock_context.close.assert_called_once()
 
 
 def test_roundtrip_url_has_correct_dates():
@@ -222,14 +244,18 @@ def test_build_latam_url_oneway_has_trip_ow_and_no_inbound():
     assert "outbound=2026-03-12T00:00:00.000Z" in url
 
 
+@patch(f"{SEARCH_MODULE}.get_random_profile", return_value=_FIXED_PROFILE)
 @patch(f"{SEARCH_MODULE}.sync_playwright")
-def test_search_latam_oneway_captures_single_bff(mock_pw):
+def test_search_latam_oneway_captures_single_bff(mock_pw, mock_profile):
     """One-way search navigates to OW page and returns the single BFF response."""
     bff_resp = _make_bff_response("FOR", "MIA", brand_price=2500.0)
 
     mock_browser = MagicMock()
+    mock_context = MagicMock()
     mock_page = MagicMock()
-    mock_browser.new_page.return_value = mock_page
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+    mock_context.close = MagicMock()
     mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = mock_browser
 
     captured_cb = {}
@@ -261,11 +287,13 @@ def test_search_latam_oneway_captures_single_bff(mock_pw):
     goto_url = mock_page.goto.call_args[0][0]
     assert "trip=OW" in goto_url
     assert "inbound=" not in goto_url
+    mock_context.close.assert_called_once()
 
 
 @patch(f"{SEARCH_MODULE}.get_breaker")
+@patch(f"{SEARCH_MODULE}.get_random_profile", return_value=_FIXED_PROFILE)
 @patch(f"{SEARCH_MODULE}.sync_playwright")
-def test_roundtrip_records_failure_at_most_once_per_search(mock_pw, mock_get_breaker):
+def test_roundtrip_records_failure_at_most_once_per_search(mock_pw, mock_profile, mock_get_breaker):
     """_failure_recorded flag prevents record_failure from being called more than once
     even if multiple exception handlers fire in a single search_latam_roundtrip call."""
     mock_breaker = MagicMock()
@@ -273,8 +301,11 @@ def test_roundtrip_records_failure_at_most_once_per_search(mock_pw, mock_get_bre
     mock_get_breaker.return_value = mock_breaker
 
     mock_browser = MagicMock()
+    mock_context = MagicMock()
     mock_page = MagicMock()
-    mock_browser.new_page.return_value = mock_page
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+    mock_context.close = MagicMock()
     mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = mock_browser
     mock_page.on = MagicMock()
 

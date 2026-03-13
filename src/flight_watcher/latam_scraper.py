@@ -7,10 +7,28 @@ from datetime import datetime
 from pathlib import Path
 from patchright.sync_api import sync_playwright
 
+from flight_watcher.browser_profiles import get_random_profile
 from flight_watcher.circuit_breaker import get_breaker
 from flight_watcher.errors import classify_error
 
 logger = logging.getLogger(__name__)
+
+
+def _create_context(browser):
+    """Create an isolated browser context with a random fingerprint profile."""
+    profile = get_random_profile()
+    logger.debug(
+        "Browser profile: locale=%s tz=%s viewport=%dx%d",
+        profile.locale, profile.timezone_id,
+        profile.viewport_width, profile.viewport_height,
+    )
+    context = browser.new_context(
+        locale=profile.locale,
+        timezone_id=profile.timezone_id,
+        viewport={"width": profile.viewport_width, "height": profile.viewport_height},
+    )
+    page = context.new_page()
+    return context, page
 
 
 def _build_latam_url(
@@ -62,7 +80,7 @@ def search_latam(
             headless=headless,
             channel="chrome",
         )
-        page = browser.new_page(no_viewport=True)
+        context, page = _create_context(browser)
         page.on("response", on_response)
 
         url = _build_latam_url(origin, destination, outbound, inbound, trip="RT")
@@ -77,6 +95,7 @@ def search_latam(
             category = classify_error(exc)
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
 
+        context.close()
         browser.close()
 
     elapsed = time.time() - start
@@ -115,7 +134,7 @@ def search_latam_oneway(
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless, channel="chrome")
-        page = browser.new_page(no_viewport=True)
+        context, page = _create_context(browser)
         page.on("response", on_response)
 
         url = _build_latam_url(origin, destination, outbound, trip="OW")
@@ -130,6 +149,7 @@ def search_latam_oneway(
             category = classify_error(exc)
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
 
+        context.close()
         browser.close()
 
     elapsed = time.time() - start
@@ -180,7 +200,7 @@ def search_latam_roundtrip(
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless, channel="chrome")
-        page = browser.new_page(no_viewport=True)
+        context, page = _create_context(browser)
         page.on("response", on_response)
 
         url = _build_latam_url(origin, destination, outbound, inbound)
@@ -198,6 +218,7 @@ def search_latam_roundtrip(
                 breaker.record_failure(category)
                 _failure_recorded = True
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
+            context.close()
             browser.close()
             elapsed = time.time() - start
             logger.debug("Search completed in %.1fs", elapsed)
@@ -230,6 +251,7 @@ def search_latam_roundtrip(
                 breaker.record_failure(category)
                 _failure_recorded = True
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
+            context.close()
             browser.close()
             elapsed = time.time() - start
             logger.debug("Search completed in %.1fs", elapsed)
@@ -246,6 +268,7 @@ def search_latam_roundtrip(
                 breaker.record_failure(category)
                 _failure_recorded = True
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
+            context.close()
             browser.close()
             elapsed = time.time() - start
             logger.debug("Search completed in %.1fs", elapsed)
@@ -272,6 +295,7 @@ def search_latam_roundtrip(
             return_data = bff_responses[-1]
             print(f"Return: {len(return_data.get('content', []))} offers")
 
+        context.close()
         browser.close()
 
     elapsed = time.time() - start
