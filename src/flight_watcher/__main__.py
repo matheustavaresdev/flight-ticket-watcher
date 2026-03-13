@@ -14,13 +14,17 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 logger = logging.getLogger(__name__)
 
 
-def _handle_signal(signum, frame):
-    logger.info("Received signal %s, shutting down...", signum)
+def _shutdown():
     get_scanner_state().status = ScannerStatus.SHUTTING_DOWN
     stop_health_server()
     stop_scheduler()
     dispose_engine()
     logger.info("Shutdown complete")
+
+
+def _handle_signal(signum, frame):
+    logger.info("Received signal %s, shutting down...", signum)
+    _shutdown()
     sys.exit(0)
 
 
@@ -32,14 +36,8 @@ def main():
     start_scheduler()
     register_scan_job()
 
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        get_scanner_state().status = ScannerStatus.SHUTTING_DOWN
-        stop_health_server()
-        stop_scheduler()
-        dispose_engine()
+    while True:
+        time.sleep(1)
 
 
 @cli.command("scheduler")

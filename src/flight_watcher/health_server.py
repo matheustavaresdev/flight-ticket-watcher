@@ -5,7 +5,10 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Optional
 
+from sqlalchemy import func, select
+
 from flight_watcher.circuit_breaker import get_breaker
+from flight_watcher.models import ScanRun
 from flight_watcher.scanner_state import ScannerStatus, get_scanner_state
 
 logger = logging.getLogger(__name__)
@@ -21,32 +24,23 @@ def _get_health_data() -> tuple[dict, int]:
 
     scanner_status = state.status
 
-    # Compute circuit breaker backoff remaining
-    import time
-    backoff_remaining = None
-    if breaker._state.value == "open":
-        elapsed = time.monotonic() - breaker._opened_at
-        remaining = breaker.backoff_levels[breaker._backoff_index] - elapsed
-        backoff_remaining = max(0.0, remaining)
-
     # Get next scheduled scan time
     next_scan = None
     try:
-        import flight_watcher.scheduler as sched_mod
-        if sched_mod._scheduler is not None:
-            jobs = sched_mod._scheduler.get_jobs()
+        import flight_watcher.scheduler as sched_mod  # deferred import to avoid circular dependency
+        scheduler = sched_mod.get_scheduler()
+        if scheduler is not None:
+            jobs = scheduler.get_jobs()
             run_times = [j.next_run_time for j in jobs if j.next_run_time is not None]
             if run_times:
                 next_scan = min(run_times).isoformat()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to query next scheduled scan: %s", e)
 
     # Get last successful scans
     last_successful_scans: dict = {}
     try:
         from flight_watcher.db import get_session
-        from flight_watcher.models import ScanRun
-        from sqlalchemy import select, func
         with get_session() as session:
             rows = session.execute(
                 select(ScanRun.search_config_id, func.max(ScanRun.completed_at))
@@ -57,8 +51,8 @@ def _get_health_data() -> tuple[dict, int]:
                 str(row[0]): row[1].isoformat() if row[1] else None
                 for row in rows
             }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to query last successful scans: %s", e)
 
     is_shutting_down = scanner_status == ScannerStatus.SHUTTING_DOWN
     http_status = 503 if is_shutting_down else 200
@@ -67,11 +61,7 @@ def _get_health_data() -> tuple[dict, int]:
         "status": "shutting_down" if is_shutting_down else "healthy",
         "scanner": scanner_status.value,
         "started_at": state.started_at.isoformat(),
-        "circuit_breaker": {
-            "state": breaker.state.value,
-            "consecutive_failures": breaker._consecutive_failures,
-            "backoff_remaining_sec": backoff_remaining,
-        },
+        "circuit_breaker": breaker.status_info(),
         "last_successful_scans": last_successful_scans,
         "next_scheduled_scan": next_scan,
     }

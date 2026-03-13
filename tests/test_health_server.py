@@ -37,12 +37,7 @@ class TestHealthServer(unittest.TestCase):
         with patch.dict("os.environ", {"HEALTH_PORT": str(port)}):
             with patch(f"{HEALTH_MODULE}.get_breaker") as mock_breaker:
                 mock_breaker.return_value = MagicMock(
-                    state=MagicMock(value="closed"),
-                    _consecutive_failures=0,
-                    _state=MagicMock(value="closed"),
-                    _opened_at=0,
-                    _backoff_index=0,
-                    backoff_levels=(900, 1800, 3600, 7200),
+                    status_info=lambda: {"state": "closed", "consecutive_failures": 0, "backoff_remaining_sec": None},
                 )
                 from flight_watcher.health_server import start_health_server, stop_health_server
                 start_health_server()
@@ -64,12 +59,7 @@ class TestHealthServer(unittest.TestCase):
                 mock_state.return_value.status = ScannerStatus.SHUTTING_DOWN
                 mock_state.return_value.started_at = MagicMock(isoformat=lambda: "2026-01-01T00:00:00+00:00")
                 mock_breaker.return_value = MagicMock(
-                    state=MagicMock(value="closed"),
-                    _consecutive_failures=0,
-                    _state=MagicMock(value="closed"),
-                    _opened_at=0,
-                    _backoff_index=0,
-                    backoff_levels=(900, 1800, 3600, 7200),
+                    status_info=lambda: {"state": "closed", "consecutive_failures": 0, "backoff_remaining_sec": None},
                 )
                 from flight_watcher.health_server import start_health_server, stop_health_server
                 start_health_server()

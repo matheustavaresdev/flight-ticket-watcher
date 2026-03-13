@@ -38,10 +38,13 @@ class ScannerState:
 
 
 _state: ScannerState | None = None
+_state_lock = threading.Lock()
 
 
 def get_scanner_state() -> ScannerState:
     global _state
     if _state is None:
-        _state = ScannerState()
+        with _state_lock:
+            if _state is None:
+                _state = ScannerState()
     return _state

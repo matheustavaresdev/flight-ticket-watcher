@@ -84,6 +84,20 @@ class CircuitBreaker:
         elif self._state == CircuitState.CLOSED:
             self._consecutive_failures = 0
 
+    def status_info(self) -> dict:
+        """Return serializable status dict, using public state property for auto-transition."""
+        state = self.state.value  # uses property, triggers OPEN->HALF_OPEN if needed
+        backoff_remaining = None
+        if state == "open":
+            elapsed = time.monotonic() - self._opened_at
+            remaining = self.backoff_levels[self._backoff_index] - elapsed
+            backoff_remaining = max(0.0, remaining)
+        return {
+            "state": state,
+            "consecutive_failures": self._consecutive_failures,
+            "backoff_remaining_sec": backoff_remaining,
+        }
+
     def record_failure(self, category: ErrorCategory) -> None:
         """Record a search failure. Only tripping categories affect the breaker."""
         if category not in self.TRIPPING_CATEGORIES:
