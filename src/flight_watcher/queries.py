@@ -282,10 +282,17 @@ def price_trend_summary(
     if not snapshots:
         return []
 
-    # Group by flight_date: list of (fetched_at, price) ordered by fetched_at
-    groups: dict[date, list[tuple[datetime, Decimal]]] = defaultdict(list)
+    # Reduce to one price per (scan_run_id, flight_date) — take min price (best deal seen in that scan)
+    run_date_best: dict[tuple[int, date], tuple[datetime, Decimal]] = {}
     for s in snapshots:
-        groups[s.flight_date].append((s.fetched_at, s.price))
+        key = (s.scan_run_id, s.flight_date)
+        if key not in run_date_best or s.price < run_date_best[key][1]:
+            run_date_best[key] = (s.fetched_at, s.price)
+
+    # Build time series: one entry per (scan_run, flight_date), sorted by fetched_at within each date
+    groups: dict[date, list[tuple[datetime, Decimal]]] = defaultdict(list)
+    for (_, flight_date), (fetched_at, price) in sorted(run_date_best.items(), key=lambda x: x[1][0]):
+        groups[flight_date].append((fetched_at, price))
 
     results = []
     for flight_date in sorted(groups):
@@ -296,14 +303,17 @@ def price_trend_summary(
         last_7 = prices[-7:]
         rolling_avg_7d = sum(last_7, Decimal("0")) / Decimal(len(last_7))
 
-        pct_diff = float((current_price - rolling_avg_7d) / rolling_avg_7d * Decimal("100"))
-
-        if pct_diff > 5:
-            direction = "↑"
-        elif pct_diff < -5:
-            direction = "↓"
-        else:
+        if rolling_avg_7d == Decimal("0"):
+            pct_diff = 0.0
             direction = "→"
+        else:
+            pct_diff = float((current_price - rolling_avg_7d) / rolling_avg_7d * Decimal("100"))
+            if pct_diff > 5:
+                direction = "↑"
+            elif pct_diff < -5:
+                direction = "↓"
+            else:
+                direction = "→"
 
         results.append(
             {

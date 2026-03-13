@@ -70,6 +70,7 @@ def _make_mock_snapshot(
     flight_date=None,
     brand="LIGHT",
     search_type=SearchType.ONEWAY,
+    scan_run_id=1,
 ):
     """Mock-based snapshot for price_history/trend tests."""
     snap = MagicMock(spec=PriceSnapshot)
@@ -80,6 +81,7 @@ def _make_mock_snapshot(
     snap.flight_date = flight_date or date(2026, 6, 21)
     snap.brand = brand
     snap.search_type = search_type
+    snap.scan_run_id = scan_run_id
     return snap
 
 
@@ -540,6 +542,7 @@ class TestPriceTrendSummary:
                 fetched_at=datetime(2026, 3, 1, i, 0, tzinfo=timezone.utc),
                 flight_date=fd,
                 search_type=search_type,
+                scan_run_id=i + 1,  # each price is from a distinct scan run
             )
             snaps.append(snap)
         return snaps
@@ -638,3 +641,19 @@ class TestPriceTrendSummary:
         current = Decimal("1100.00")
         expected_pct = float((current - rolling_avg) / rolling_avg * Decimal("100"))
         assert abs(result[0]["pct_diff"] - expected_pct) < 0.001
+
+    def test_trend_summary_uses_min_price_per_scan(self):
+        """Multiple itineraries in same scan run for same flight_date → only min price used."""
+        session = MagicMock()
+        snap1 = _make_snapshot(scan_run_id=1, flight_date=date(2025, 6, 21), price=Decimal("1000"), fetched_at=datetime(2025, 3, 1, 10, 0))
+        snap2 = _make_snapshot(scan_run_id=1, flight_date=date(2025, 6, 21), price=Decimal("1500"), fetched_at=datetime(2025, 3, 1, 10, 0))
+        # Same scan run (id=1), same flight_date, different itineraries → should use min=1000
+        session.execute.return_value.scalars.return_value.all.return_value = [snap1, snap2]
+
+        result = price_trend_summary(session, search_config_id=1)
+
+        assert len(result) == 1
+        assert result[0]["current_price"] == Decimal("1000")
+        assert result[0]["rolling_avg_7d"] == Decimal("1000")
+        assert result[0]["pct_diff"] == 0.0
+        assert result[0]["direction"] == "→"
