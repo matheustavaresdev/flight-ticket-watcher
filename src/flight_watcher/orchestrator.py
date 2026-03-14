@@ -8,12 +8,14 @@ from sqlalchemy.orm import Session
 from flight_watcher.date_expansion import expand_dates
 from flight_watcher.db import get_session
 from flight_watcher.delays import random_delay
+from flight_watcher.errors import SearchFailedError, get_retry_strategy
 from flight_watcher.models import (
     FlightResult,
     PriceSnapshot,
     ScanRun,
     ScanStatus,
     SearchConfig,
+    SearchResult,
     SearchType,
 )
 from flight_watcher.scanner import search_one_way
@@ -172,23 +174,55 @@ def run_scan(config: dict) -> None:
         try:
             for flight_date in remaining_dates:
                 # Outbound direction: origin → destination
-                count_out = _search_and_store_oneway(
+                result_out = _search_and_store_oneway(
                     session,
                     scan_run,
                     config["origin"],
                     config["destination"],
                     flight_date,
                 )
+                if not result_out.ok:
+                    assert result_out.error_category is not None, "failure result must carry error_category"
+                    strategy = get_retry_strategy(result_out.error_category)
+                    if not strategy.skip_item:
+                        raise SearchFailedError(
+                            f"Search failed for {config['origin']}→{config['destination']}"
+                            f" on {flight_date}: [{result_out.error_category}] {result_out.error}",
+                            error_category=result_out.error_category,
+                        )
+                    logger.warning(
+                        "Skipping outbound %s→%s on %s due to %s",
+                        config["origin"],
+                        config["destination"],
+                        flight_date,
+                        result_out.error_category,
+                    )
                 random_delay()
 
                 # Return direction: destination → origin
-                count_ret = _search_and_store_oneway(
+                result_ret = _search_and_store_oneway(
                     session,
                     scan_run,
                     config["destination"],
                     config["origin"],
                     flight_date,
                 )
+                if not result_ret.ok:
+                    assert result_ret.error_category is not None, "failure result must carry error_category"
+                    strategy = get_retry_strategy(result_ret.error_category)
+                    if not strategy.skip_item:
+                        raise SearchFailedError(
+                            f"Search failed for {config['destination']}→{config['origin']}"
+                            f" on {flight_date}: [{result_ret.error_category}] {result_ret.error}",
+                            error_category=result_ret.error_category,
+                        )
+                    logger.warning(
+                        "Skipping return %s→%s on %s due to %s",
+                        config["destination"],
+                        config["origin"],
+                        flight_date,
+                        result_ret.error_category,
+                    )
                 random_delay()
 
                 scan_run.last_successful_date = date.fromisoformat(flight_date)
@@ -199,8 +233,8 @@ def run_scan(config: dict) -> None:
                 logger.debug(
                     "Date %s: stored %d outbound + %d return snapshots",
                     flight_date,
-                    count_out,
-                    count_ret,
+                    result_out.data or 0,
+                    result_ret.data or 0,
                 )
 
             scan_run.status = ScanStatus.COMPLETED
@@ -254,18 +288,35 @@ def _search_and_store_oneway(
     origin: str,
     destination: str,
     flight_date: str,
-) -> int:
-    """Run one-way search, convert FlightResult→PriceSnapshot, bulk insert. Returns count stored."""
+) -> SearchResult[int]:
+    """Run one-way search, convert FlightResult→PriceSnapshot, bulk insert. Returns SearchResult with count stored."""
     result = search_one_way(origin, destination, flight_date)
-    if not result.ok or not result.data:
+    if not result.ok:
+        logger.warning(
+            "Search failed for %s→%s on %s: [%s] %s",
+            origin,
+            destination,
+            flight_date,
+            result.error_category,
+            result.error,
+        )
+        return SearchResult(
+            ok=False,
+            data=0,
+            error=result.error,
+            error_category=result.error_category,
+            hint=result.hint,
+            duration_sec=result.duration_sec,
+        )
+    if not result.data:
         logger.debug("No results for %s→%s on %s", origin, destination, flight_date)
-        return 0
+        return SearchResult.success(0, duration_sec=result.duration_sec)
     snapshots = [
         _flight_result_to_snapshot(r, scan_run.id, SearchType.ONEWAY)
         for r in result.data
     ]
     session.add_all(snapshots)
-    return len(snapshots)
+    return SearchResult.success(len(snapshots), duration_sec=result.duration_sec)
 
 
 def _flight_result_to_snapshot(

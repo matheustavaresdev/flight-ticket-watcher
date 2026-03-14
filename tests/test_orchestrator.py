@@ -154,15 +154,16 @@ class TestRunScan(unittest.TestCase):
 
     @patch(f"{MODULE}.get_session")
     @patch(f"{MODULE}._find_resumable_run", return_value=None)
-    @patch(f"{MODULE}._search_and_store_oneway", return_value=2)
+    @patch(f"{MODULE}._search_and_store_oneway")
     @patch(f"{MODULE}.random_delay")
     @patch(f"{MODULE}.expand_dates")
     def test_run_scan_creates_scan_run(
         self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
     ):
         """Verifies ScanRun created with status=RUNNING."""
-        from flight_watcher.models import ScanRun, ScanStatus
+        from flight_watcher.models import ScanRun, ScanStatus, SearchResult
 
+        mock_search.return_value = SearchResult.success(2)
         mock_expand.return_value = (["2026-06-13"], ["2026-06-28"])
         config = _make_config()
         captured_status_at_add = {}
@@ -189,15 +190,16 @@ class TestRunScan(unittest.TestCase):
 
     @patch(f"{MODULE}.get_session")
     @patch(f"{MODULE}._find_resumable_run", return_value=None)
-    @patch(f"{MODULE}._search_and_store_oneway", return_value=1)
+    @patch(f"{MODULE}._search_and_store_oneway")
     @patch(f"{MODULE}.random_delay")
     @patch(f"{MODULE}.expand_dates")
     def test_run_scan_marks_completed_on_success(
         self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
     ):
         """Verifies status=COMPLETED and completed_at are set on success."""
-        from flight_watcher.models import ScanRun, ScanStatus
+        from flight_watcher.models import ScanRun, ScanStatus, SearchResult
 
+        mock_search.return_value = SearchResult.success(1)
         mock_expand.return_value = (["2026-06-13"], ["2026-06-28"])
         config = _make_config()
         captured = {}
@@ -259,15 +261,16 @@ class TestRunScan(unittest.TestCase):
 
     @patch(f"{MODULE}.get_session")
     @patch(f"{MODULE}._find_resumable_run", return_value=None)
-    @patch(f"{MODULE}._search_and_store_oneway", return_value=2)
+    @patch(f"{MODULE}._search_and_store_oneway")
     @patch(f"{MODULE}.random_delay")
     @patch(f"{MODULE}.expand_dates")
     def test_run_scan_updates_cursor_after_each_date(
         self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
     ):
         """Verifies last_successful_date is updated after each date."""
-        from flight_watcher.models import ScanRun
+        from flight_watcher.models import ScanRun, SearchResult
 
+        mock_search.return_value = SearchResult.success(2)
         mock_expand.return_value = (["2026-06-13", "2026-06-14"], ["2026-06-28"])
         config = _make_config()
         captured = {}
@@ -293,15 +296,16 @@ class TestRunScan(unittest.TestCase):
 
     @patch(f"{MODULE}.get_session")
     @patch(f"{MODULE}._find_resumable_run", return_value=None)
-    @patch(f"{MODULE}._search_and_store_oneway", return_value=0)
+    @patch(f"{MODULE}._search_and_store_oneway")
     @patch(f"{MODULE}.random_delay")
     @patch(f"{MODULE}.expand_dates")
     def test_empty_search_results_continues(
         self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
     ):
-        """Empty results (circuit breaker or no flights) don't fail the run."""
-        from flight_watcher.models import ScanRun, ScanStatus
+        """Empty results (no flights found) don't fail the run — cursor advances."""
+        from flight_watcher.models import ScanRun, ScanStatus, SearchResult
 
+        mock_search.return_value = SearchResult.success(0)
         mock_expand.return_value = (["2026-06-13", "2026-06-14"], ["2026-06-28"])
         config = _make_config()
         captured = {}
@@ -326,15 +330,16 @@ class TestRunScan(unittest.TestCase):
 
     @patch(f"{MODULE}.get_session")
     @patch(f"{MODULE}._find_resumable_run", return_value=None)
-    @patch(f"{MODULE}._search_and_store_oneway", return_value=1)
+    @patch(f"{MODULE}._search_and_store_oneway")
     @patch(f"{MODULE}.random_delay")
     @patch(f"{MODULE}.expand_dates")
     def test_run_scan_expands_dates_and_searches(
         self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
     ):
         """Verifies search_one_way called for each date in both directions via _search_and_store_oneway."""
-        from flight_watcher.models import ScanRun
+        from flight_watcher.models import ScanRun, SearchResult
 
+        mock_search.return_value = SearchResult.success(1)
         mock_expand.return_value = (["2026-06-13"], ["2026-06-28"])
         config = _make_config(origin="GRU", destination="GIG")
 
@@ -548,14 +553,16 @@ class TestRunRoundtripPhase(unittest.TestCase):
 class TestCursorResumption(unittest.TestCase):
     @patch(f"{MODULE}.get_session")
     @patch(f"{MODULE}._find_resumable_run")
-    @patch(f"{MODULE}._search_and_store_oneway", return_value=1)
+    @patch(f"{MODULE}._search_and_store_oneway")
     @patch(f"{MODULE}.random_delay")
     @patch(f"{MODULE}.expand_dates")
     def test_cursor_resumption_skips_completed_dates(
         self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
     ):
         """Dates at or before cursor are skipped."""
-        from flight_watcher.models import ScanStatus
+        from flight_watcher.models import ScanStatus, SearchResult
+
+        mock_search.return_value = SearchResult.success(1)
 
         mock_expand.return_value = (
             ["2026-06-13", "2026-06-14", "2026-06-15"],
@@ -610,11 +617,12 @@ class TestSearchAndStoreOneway(unittest.TestCase):
         mock_session = MagicMock()
         scan_run = _make_scan_run(id=7)
 
-        count = _search_and_store_oneway(
+        result = _search_and_store_oneway(
             mock_session, scan_run, "GRU", "GIG", "2026-06-13"
         )
 
-        self.assertEqual(count, 1)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.data, 1)
         mock_session.add_all.assert_called_once()
         added = mock_session.add_all.call_args[0][0]
         self.assertEqual(len(added), 1)
@@ -627,6 +635,190 @@ class TestSearchAndStoreOneway(unittest.TestCase):
         self.assertEqual(snapshot.brand, "ECONOMY")
         self.assertEqual(snapshot.search_type, SearchType.ONEWAY)
         self.assertEqual(snapshot.flight_date, date(2026, 6, 13))
+
+
+class TestFailureAwareCursorAdvancement(unittest.TestCase):
+    def _setup_session_and_scan_run(self, mock_get_session):
+        from flight_watcher.models import ScanRun
+
+        captured = {}
+        mock_session = MagicMock()
+
+        def add_side_effect(obj):
+            if isinstance(obj, ScanRun):
+                obj.id = 1
+                captured["scan_run"] = obj
+
+        mock_session.add.side_effect = add_side_effect
+        mock_get_session.return_value.__enter__ = lambda s: mock_session
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+        return mock_session, captured
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}._find_resumable_run", return_value=None)
+    @patch(f"{MODULE}._search_and_store_oneway")
+    @patch(f"{MODULE}.random_delay")
+    @patch(f"{MODULE}.expand_dates")
+    def test_blocked_halts_scan_and_does_not_advance_cursor(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
+        """BLOCKED failure raises SearchFailedError and cursor is NOT advanced."""
+        from flight_watcher.errors import ErrorCategory, SearchFailedError
+        from flight_watcher.models import SearchResult, ScanStatus
+
+        mock_expand.return_value = (["2026-06-13", "2026-06-14"], ["2026-06-28"])
+        mock_search.return_value = SearchResult.failure(
+            error="403 Forbidden", error_category=ErrorCategory.BLOCKED
+        )
+        config = _make_config()
+        mock_session, captured = self._setup_session_and_scan_run(mock_get_session)
+
+        from flight_watcher.orchestrator import run_scan
+
+        with self.assertRaises(SearchFailedError):
+            run_scan(config)
+
+        self.assertIn("scan_run", captured)
+        self.assertEqual(captured["scan_run"].status, ScanStatus.FAILED)
+        self.assertIsNone(captured["scan_run"].last_successful_date)
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}._find_resumable_run", return_value=None)
+    @patch(f"{MODULE}._search_and_store_oneway")
+    @patch(f"{MODULE}.random_delay")
+    @patch(f"{MODULE}.expand_dates")
+    def test_network_error_halts_scan_and_does_not_advance_cursor(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
+        """NETWORK_ERROR failure raises SearchFailedError and cursor is NOT advanced."""
+        from flight_watcher.errors import ErrorCategory, SearchFailedError
+        from flight_watcher.models import SearchResult, ScanStatus
+
+        mock_expand.return_value = (["2026-06-13"], ["2026-06-28"])
+        mock_search.return_value = SearchResult.failure(
+            error="Connection reset", error_category=ErrorCategory.NETWORK_ERROR
+        )
+        config = _make_config()
+        mock_session, captured = self._setup_session_and_scan_run(mock_get_session)
+
+        from flight_watcher.orchestrator import run_scan
+
+        with self.assertRaises(SearchFailedError):
+            run_scan(config)
+
+        self.assertIn("scan_run", captured)
+        self.assertEqual(captured["scan_run"].status, ScanStatus.FAILED)
+        self.assertIsNone(captured["scan_run"].last_successful_date)
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}._find_resumable_run", return_value=None)
+    @patch(f"{MODULE}._search_and_store_oneway")
+    @patch(f"{MODULE}.random_delay")
+    @patch(f"{MODULE}.expand_dates")
+    def test_page_error_advances_cursor_and_scan_completes(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
+        """PAGE_ERROR (skip_item=True) advances cursor and scan completes."""
+        from flight_watcher.errors import ErrorCategory
+        from flight_watcher.models import SearchResult, ScanStatus
+
+        mock_expand.return_value = (["2026-06-13"], ["2026-06-28"])
+        mock_search.return_value = SearchResult.failure(
+            error="Element not found", error_category=ErrorCategory.PAGE_ERROR
+        )
+        config = _make_config()
+        mock_session, captured = self._setup_session_and_scan_run(mock_get_session)
+
+        from flight_watcher.orchestrator import run_scan
+
+        run_scan(config)  # should not raise
+
+        self.assertIn("scan_run", captured)
+        self.assertEqual(captured["scan_run"].status, ScanStatus.COMPLETED)
+        # Both dates processed — cursor advanced to last date
+        self.assertEqual(captured["scan_run"].last_successful_date, date(2026, 6, 28))
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}._find_resumable_run", return_value=None)
+    @patch(f"{MODULE}._search_and_store_oneway")
+    @patch(f"{MODULE}.random_delay")
+    @patch(f"{MODULE}.expand_dates")
+    def test_empty_success_advances_cursor(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
+        """SearchResult.success with 0 results (no flights) advances cursor — regression guard."""
+        from flight_watcher.models import SearchResult, ScanStatus
+
+        mock_expand.return_value = (["2026-06-13"], ["2026-06-28"])
+        mock_search.return_value = SearchResult.success(0)
+        config = _make_config()
+        mock_session, captured = self._setup_session_and_scan_run(mock_get_session)
+
+        from flight_watcher.orchestrator import run_scan
+
+        run_scan(config)
+
+        self.assertIn("scan_run", captured)
+        self.assertEqual(captured["scan_run"].status, ScanStatus.COMPLETED)
+        self.assertEqual(captured["scan_run"].last_successful_date, date(2026, 6, 28))
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}._find_resumable_run", return_value=None)
+    @patch(f"{MODULE}._search_and_store_oneway")
+    @patch(f"{MODULE}.random_delay")
+    @patch(f"{MODULE}.expand_dates")
+    def test_outbound_blocked_short_circuits_return_search(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
+        """When outbound fails with BLOCKED, return search is not attempted."""
+        from flight_watcher.errors import ErrorCategory, SearchFailedError
+        from flight_watcher.models import SearchResult, ScanRun
+
+        mock_expand.return_value = (["2026-06-13"], ["2026-06-28"])
+        mock_search.return_value = SearchResult.failure(
+            error="403 Forbidden", error_category=ErrorCategory.BLOCKED
+        )
+        config = _make_config()
+        mock_session, captured = self._setup_session_and_scan_run(mock_get_session)
+
+        from flight_watcher.orchestrator import run_scan
+
+        with self.assertRaises(SearchFailedError):
+            run_scan(config)
+
+        # Only one call: outbound for the first date (short-circuited before return)
+        self.assertEqual(mock_search.call_count, 1)
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}._find_resumable_run", return_value=None)
+    @patch(f"{MODULE}._search_and_store_oneway")
+    @patch(f"{MODULE}.random_delay")
+    @patch(f"{MODULE}.expand_dates")
+    def test_outbound_succeeds_return_rate_limited_cursor_not_advanced(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
+        """When outbound succeeds but return fails with RATE_LIMITED, cursor is NOT advanced."""
+        from flight_watcher.errors import ErrorCategory, SearchFailedError
+        from flight_watcher.models import SearchResult, ScanStatus
+
+        mock_expand.return_value = (["2026-06-13"], ["2026-06-28"])
+        mock_search.side_effect = [
+            SearchResult.success(2),  # outbound GRU→GIG succeeds
+            SearchResult.failure(
+                error="429 Too Many Requests", error_category=ErrorCategory.RATE_LIMITED
+            ),  # return GIG→GRU fails
+        ]
+        config = _make_config()
+        mock_session, captured = self._setup_session_and_scan_run(mock_get_session)
+
+        from flight_watcher.orchestrator import run_scan
+
+        with self.assertRaises(SearchFailedError):
+            run_scan(config)
+
+        self.assertIn("scan_run", captured)
+        self.assertEqual(captured["scan_run"].status, ScanStatus.FAILED)
+        self.assertIsNone(captured["scan_run"].last_successful_date)
 
 
 def _make_config_row(id=1, retry_count=0, needs_attention=False):
