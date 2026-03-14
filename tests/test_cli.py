@@ -349,7 +349,7 @@ class TestHealthCommand:
         with patch("flight_watcher.cli.health.urllib.request.urlopen", urlopen_mock):
             result = runner.invoke(app, ["health"])
 
-        assert result.exit_code == 1, result.output
+        assert result.exit_code == 2, result.output
         assert "[WARN]" in result.output
 
     def test_health_daemon_shutting_down(self):
@@ -418,6 +418,77 @@ class TestHealthCommand:
         assert result.exit_code == 1
         assert "HEALTH_PORT" in result.output
         assert "abc" in result.output
+        assert "Traceback" not in result.output
+
+    def test_health_daemon_db_unreachable(self):
+        runner = CliRunner()
+        data = {
+            "status": "healthy",
+            "scanner": "idle",
+            "started_at": "2026-03-14T10:00:00",
+            "circuit_breaker": {
+                "state": "closed",
+                "consecutive_failures": 0,
+                "backoff_remaining_sec": None,
+            },
+            "db_reachable": False,
+            "last_successful_scans": {},
+            "next_scheduled_scan": None,
+        }
+        urlopen_mock = self._make_urlopen_mock(data)
+
+        with patch("flight_watcher.cli.health.urllib.request.urlopen", urlopen_mock):
+            result = runner.invoke(app, ["health"])
+
+        assert result.exit_code == 1, result.output
+        assert "UNREACHABLE" in result.output
+        assert "[FAIL]" in result.output
+
+    def test_health_daemon_breaker_open_exit_code_2(self):
+        runner = CliRunner()
+        data = {
+            "status": "healthy",
+            "scanner": "idle",
+            "started_at": "2026-03-14T10:00:00",
+            "circuit_breaker": {
+                "state": "open",
+                "consecutive_failures": 3,
+                "backoff_remaining_sec": 30.0,
+            },
+            "db_reachable": True,
+            "last_successful_scans": {},
+            "next_scheduled_scan": None,
+        }
+        urlopen_mock = self._make_urlopen_mock(data)
+
+        with patch("flight_watcher.cli.health.urllib.request.urlopen", urlopen_mock):
+            result = runner.invoke(app, ["health"])
+
+        assert result.exit_code == 2, result.output
+        assert "[WARN]" in result.output
+
+    def test_health_cb_backoff_string_type(self):
+        runner = CliRunner()
+        data = {
+            "status": "healthy",
+            "scanner": "idle",
+            "started_at": "2026-03-14T10:00:00",
+            "circuit_breaker": {
+                "state": "open",
+                "consecutive_failures": 2,
+                "backoff_remaining_sec": "45",
+            },
+            "db_reachable": True,
+            "last_successful_scans": {},
+            "next_scheduled_scan": None,
+        }
+        urlopen_mock = self._make_urlopen_mock(data)
+
+        with patch("flight_watcher.cli.health.urllib.request.urlopen", urlopen_mock):
+            result = runner.invoke(app, ["health"])
+
+        assert result.exit_code == 2, result.output
+        assert "backoff remaining: 45s" in result.output
 
 
 class TestRunsCommand:

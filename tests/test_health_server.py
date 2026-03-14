@@ -37,8 +37,14 @@ class TestHealthServer(unittest.TestCase):
 
     def test_server_starts_and_returns_200(self):
         port = self._find_free_port()
+        session_ctx = MagicMock()
+        session_ctx.__enter__ = MagicMock(return_value=MagicMock(execute=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))))
+        session_ctx.__exit__ = MagicMock(return_value=False)
         with patch.dict("os.environ", {"HEALTH_PORT": str(port)}):
-            with patch(f"{HEALTH_MODULE}.get_breaker") as mock_breaker:
+            with (
+                patch(f"{HEALTH_MODULE}.get_breaker") as mock_breaker,
+                patch("flight_watcher.db.get_session", return_value=session_ctx),
+            ):
                 mock_breaker.return_value = MagicMock(
                     status_info=lambda: {
                         "state": "closed",
@@ -59,6 +65,8 @@ class TestHealthServer(unittest.TestCase):
                     self.assertIn("status", data)
                     self.assertIn("scanner", data)
                     self.assertIn("circuit_breaker", data)
+                    self.assertIn("db_reachable", data)
+                    self.assertTrue(data["db_reachable"])
                 finally:
                     stop_health_server()
 
@@ -112,6 +120,34 @@ class TestHealthServer(unittest.TestCase):
                     self.assertEqual(e.code, 404)
             finally:
                 stop_health_server()
+
+    def test_health_db_unreachable(self):
+        port = self._find_free_port()
+        with patch.dict("os.environ", {"HEALTH_PORT": str(port)}):
+            with (
+                patch(f"{HEALTH_MODULE}.get_breaker") as mock_breaker,
+                patch("flight_watcher.db.get_session", side_effect=Exception("DB down")),
+            ):
+                mock_breaker.return_value = MagicMock(
+                    status_info=lambda: {
+                        "state": "closed",
+                        "consecutive_failures": 0,
+                        "backoff_remaining_sec": None,
+                    },
+                )
+                from flight_watcher.health_server import (
+                    start_health_server,
+                    stop_health_server,
+                )
+
+                start_health_server()
+                try:
+                    response = urllib.request.urlopen(f"http://localhost:{port}/health")
+                    self.assertEqual(response.status, 200)
+                    data = json.loads(response.read())
+                    self.assertFalse(data["db_reachable"])
+                finally:
+                    stop_health_server()
 
     def test_stop_health_server_shuts_down_cleanly(self):
         port = self._find_free_port()
