@@ -1,6 +1,10 @@
 """Query functions for flight price analysis."""
 
-from datetime import date
+from __future__ import annotations
+
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -190,5 +194,135 @@ def roundtrip_vs_oneway(
                 "recommendation": "roundtrip" if rt_total <= ow_total else "2x one-way",
                 "significant": savings_pct > 5,
             })
+
+    return results
+
+
+@dataclass
+class PriceHistoryResult:
+    snapshots: list[PriceSnapshot]  # ordered by fetched_at ascending
+    min_price: Decimal
+    max_price: Decimal
+    avg_price: Decimal
+    min_price_seen_at: datetime  # fetched_at of the cheapest snapshot
+
+
+def price_history(
+    session: Session,
+    origin: str,
+    destination: str,
+    flight_date: date,
+    brand: str = "LIGHT",
+    search_type: SearchType | None = None,
+) -> PriceHistoryResult | None:
+    """Return price history for a specific route + date, ordered by fetched_at ascending.
+
+    Only includes data from completed scan runs. Returns None if no snapshots found.
+    """
+    stmt = (
+        select(PriceSnapshot)
+        .join(ScanRun, PriceSnapshot.scan_run_id == ScanRun.id)
+        .where(ScanRun.status == ScanStatus.COMPLETED)
+        .where(PriceSnapshot.origin == origin)
+        .where(PriceSnapshot.destination == destination)
+        .where(PriceSnapshot.flight_date == flight_date)
+        .where(PriceSnapshot.brand == brand)
+        .order_by(PriceSnapshot.fetched_at)
+    )
+
+    if search_type is not None:
+        stmt = stmt.where(PriceSnapshot.search_type == search_type)
+
+    snapshots: list[PriceSnapshot] = session.execute(stmt).scalars().all()
+
+    if not snapshots:
+        return None
+
+    prices = [s.price for s in snapshots]
+    min_price = min(prices)
+    max_price = max(prices)
+    avg_price = sum(prices, Decimal("0")) / Decimal(len(prices))
+
+    min_price_seen_at = next(s.fetched_at for s in snapshots if s.price == min_price)
+
+    return PriceHistoryResult(
+        snapshots=list(snapshots),
+        min_price=min_price,
+        max_price=max_price,
+        avg_price=avg_price,
+        min_price_seen_at=min_price_seen_at,
+    )
+
+
+def price_trend_summary(
+    session: Session,
+    search_config_id: int,
+    brand: str = "LIGHT",
+    search_type: SearchType = SearchType.ONEWAY,
+) -> list[dict]:
+    """Return price trend summary per flight_date for a search config.
+
+    Each dict: {flight_date, current_price, rolling_avg_7d, direction, pct_diff}
+    Direction: "↑" if pct_diff > 5, "↓" if pct_diff < -5, "→" otherwise
+    Rolling avg uses last 7 observations (or all if < 7).
+    Sorted by flight_date.
+    """
+    stmt = (
+        select(PriceSnapshot)
+        .join(ScanRun, PriceSnapshot.scan_run_id == ScanRun.id)
+        .where(ScanRun.search_config_id == search_config_id)
+        .where(ScanRun.status == ScanStatus.COMPLETED)
+        .where(PriceSnapshot.brand == brand)
+        .where(PriceSnapshot.search_type == search_type)
+        .order_by(PriceSnapshot.fetched_at)
+    )
+
+    snapshots: list[PriceSnapshot] = session.execute(stmt).scalars().all()
+
+    if not snapshots:
+        return []
+
+    # Reduce to one price per (scan_run_id, flight_date) — take min price (best deal seen in that scan)
+    run_date_best: dict[tuple[int, date], tuple[datetime, Decimal]] = {}
+    for s in snapshots:
+        key = (s.scan_run_id, s.flight_date)
+        if key not in run_date_best or s.price < run_date_best[key][1]:
+            run_date_best[key] = (s.fetched_at, s.price)
+
+    # Build time series: one entry per (scan_run, flight_date), sorted by fetched_at within each date
+    groups: dict[date, list[tuple[datetime, Decimal]]] = defaultdict(list)
+    for (_, flight_date), (fetched_at, price) in sorted(run_date_best.items(), key=lambda x: x[1][0]):
+        groups[flight_date].append((fetched_at, price))
+
+    results = []
+    for flight_date in sorted(groups):
+        entries = groups[flight_date]  # already ordered by fetched_at (query ORDER BY)
+        prices = [price for _, price in entries]
+
+        current_price = prices[-1]
+        last_7 = prices[-7:]
+        rolling_avg_7d = sum(last_7, Decimal("0")) / Decimal(len(last_7))
+
+        if rolling_avg_7d == Decimal("0"):
+            pct_diff = 0.0
+            direction = "→"
+        else:
+            pct_diff = float((current_price - rolling_avg_7d) / rolling_avg_7d * Decimal("100"))
+            if pct_diff > 5:
+                direction = "↑"
+            elif pct_diff < -5:
+                direction = "↓"
+            else:
+                direction = "→"
+
+        results.append(
+            {
+                "flight_date": flight_date,
+                "current_price": current_price,
+                "rolling_avg_7d": rolling_avg_7d,
+                "direction": direction,
+                "pct_diff": pct_diff,
+            }
+        )
 
     return results
