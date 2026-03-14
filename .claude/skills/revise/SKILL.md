@@ -126,31 +126,64 @@ Run via Bash tool with `run_in_background: true`.
 
 **CRITICAL — TWO-STEP PROCESS. DO NOT PIPE.**
 
-Codex CLI cannot be piped (`|`) — it detects non-terminal stdout and changes argument parsing, causing failures. The `-o/--output-last-message` flag also does not work with `exec review` (writes empty files). Use `--json` mode with file redirect, then extract with `jq` in a **separate** command.
+Codex CLI cannot be piped (`|`) — it detects non-terminal stdout and changes argument parsing, causing failures. Use `--json` mode with file redirect, then extract with `jq` in a **separate** command.
 
 **Hardcode the literal output path.** Do NOT use shell variables. Substitute actual values directly.
 
+#### Discover correct syntax first
+
+Before the first Codex run in a session, verify the CLI syntax is current:
+
+```bash
+codex exec review --help 2>&1 | head -30
+```
+
+Check that these flags still exist: `--base`, `--full-auto`, `--ephemeral`, `--json`, `-m`. If any flag has changed, adapt the command. If unsure about available models, run `codex exec review --help` or use the Context7 MCP tool (`resolve-library-id` → `get-library-docs` for "openai/codex") to look up current docs.
+
+#### The command (substitute actual branch path):
+
 ```bash
 # Step 1: Codex writes JSON events to temp file (MUST use file redirect, NOT pipe)
+# IMPORTANT: capture stderr to a file — do NOT use 2>/dev/null
 codex exec review \
   --base main \
   --full-auto \
   --ephemeral \
-  -m gpt-5.4 \
   --json \
   > ".reviews/ACTUAL-SHORT-BRANCH-HERE/codex-raw.jsonl" \
-  2>/dev/null
+  2> ".reviews/ACTUAL-SHORT-BRANCH-HERE/codex-stderr.log"
+
+CODEX_EXIT=$?
 
 # Step 2: Extract review text from agent_message events (SEPARATE command, not piped)
 jq -rs '[.[] | select(.item.type == "agent_message")] | map(.item.text) | join("\n\n")' \
   ".reviews/ACTUAL-SHORT-BRANCH-HERE/codex-raw.jsonl" \
-  > ".reviews/ACTUAL-SHORT-BRANCH-HERE/codex-review.md"
+  > ".reviews/ACTUAL-SHORT-BRANCH-HERE/codex-review.md" 2>/dev/null || true
 
-# Step 3: Cleanup temp file
+# Step 3: Cleanup temp file (keep stderr log for debugging)
 rm -f ".reviews/ACTUAL-SHORT-BRANCH-HERE/codex-raw.jsonl"
+
+echo "codex exit: $CODEX_EXIT"
 ```
 
-If Codex fails or times out, note the failure but do not block.
+**Notes:**
+- Do NOT pass `-m <model>` unless you know the exact model name. Codex uses its default model if omitted, which is usually correct.
+- Do NOT redirect stderr to `/dev/null` — capture it to `codex-stderr.log` so failures can be diagnosed.
+
+#### If Codex fails (non-zero exit)
+
+**Do NOT just say "Codex failed" and move on.** Instead:
+
+1. Read the stderr log: `.reviews/<SHORT_BRANCH>/codex-stderr.log`
+2. Read the raw JSONL output (may contain partial results): `.reviews/<SHORT_BRANCH>/codex-raw.jsonl`
+3. Diagnose the failure:
+   - **Model not found:** Remove the `-m` flag or use a valid model name
+   - **Flag not recognized:** Run `codex exec review --help` and adapt flags
+   - **Auth/network error:** Note it and proceed without Codex review
+   - **Partial output:** Extract whatever review text was produced before the failure
+4. Retry ONCE with corrected flags. If the retry also fails, proceed without Codex review but include the error in the final report.
+
+**For re-review iterations**, change filenames to `codex-raw-2.jsonl` / `codex-review-2.md`, etc.
 
 ## Step 5: Collect and Classify Findings
 
