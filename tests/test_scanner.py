@@ -1,7 +1,8 @@
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-from flight_watcher.models import FlightResult
+from flight_watcher.errors import ErrorCategory
+from flight_watcher.models import FlightResult, SearchResult
 from flight_watcher.scanner import (
     _map_flight_to_results,
     search_one_way,
@@ -35,10 +36,13 @@ def test_search_one_way_returns_flight_results():
         patch("flight_watcher.scanner.get_flights", return_value=mock_result),
         patch("flight_watcher.scanner.create_query"),
     ):
-        results = search_one_way("FOR", "GRU", "2026-04-08")
+        result = search_one_way("FOR", "GRU", "2026-04-08")
 
-    assert len(results) == 1
-    r = results[0]
+    assert isinstance(result, SearchResult)
+    assert result.ok
+    assert result.data is not None
+    assert len(result.data) == 1
+    r = result.data[0]
     assert isinstance(r, FlightResult)
     assert r.origin == "FOR"
     assert r.destination == "GRU"
@@ -57,9 +61,11 @@ def test_search_one_way_empty_results():
         patch("flight_watcher.scanner.get_flights", return_value=[]),
         patch("flight_watcher.scanner.create_query"),
     ):
-        results = search_one_way("FOR", "GRU", "2026-04-08")
+        result = search_one_way("FOR", "GRU", "2026-04-08")
 
-    assert results == []
+    assert isinstance(result, SearchResult)
+    assert result.ok
+    assert result.data == []
 
 
 def test_search_one_way_handles_exception():
@@ -70,9 +76,25 @@ def test_search_one_way_handles_exception():
         patch("flight_watcher.scanner.create_query"),
         patch("flight_watcher.scanner.random_delay", return_value=0),
     ):
-        results = search_one_way("FOR", "GRU", "2026-04-08")
+        result = search_one_way("FOR", "GRU", "2026-04-08")
 
-    assert results == []
+    assert isinstance(result, SearchResult)
+    assert not result.ok
+    assert result.error is not None
+
+
+def test_search_one_way_circuit_breaker_open():
+    with patch("flight_watcher.scanner.get_breaker") as mock_get_breaker:
+        mock_breaker = MagicMock()
+        mock_breaker.allow_request.return_value = False
+        mock_get_breaker.return_value = mock_breaker
+
+        result = search_one_way("FOR", "GRU", "2026-04-08")
+
+    assert isinstance(result, SearchResult)
+    assert not result.ok
+    assert result.error_category == ErrorCategory.BLOCKED
+    assert result.hint == "wait for breaker reset"
 
 
 def test_search_roundtrip_calls_twice():
@@ -87,12 +109,16 @@ def test_search_roundtrip_calls_twice():
         outbound, inbound = search_roundtrip("FOR", "GRU", "2026-04-08", "2026-04-15")
 
     assert mock_gf.call_count == 2
-    assert len(outbound) == 1
-    assert len(inbound) == 1
-    assert outbound[0].origin == "FOR"
-    assert outbound[0].destination == "GRU"
-    assert inbound[0].origin == "GRU"
-    assert inbound[0].destination == "FOR"
+    assert isinstance(outbound, SearchResult)
+    assert isinstance(inbound, SearchResult)
+    assert outbound.ok
+    assert inbound.ok
+    assert len(outbound.data) == 1
+    assert len(inbound.data) == 1
+    assert outbound.data[0].origin == "FOR"
+    assert outbound.data[0].destination == "GRU"
+    assert inbound.data[0].origin == "GRU"
+    assert inbound.data[0].destination == "FOR"
 
 
 def test_map_flight_calculates_stops():
