@@ -103,9 +103,9 @@ def show(
             for row in rt_rows:
                 sig = " **" if row["significant"] else ""
                 if row["recommendation"] == "2x one-way":
-                    savings_str = f"-{row['savings_pct']:.1f}%"
-                else:
                     savings_str = f"+{row['savings_pct']:.1f}%"
+                else:
+                    savings_str = f"-{row['savings_pct']:.1f}%"
                 rt_p = _fmt_price(row["roundtrip_total"], "BRL")
                 ow_p = _fmt_price(row["oneway_total"], "BRL")
                 typer.echo(
