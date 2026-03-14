@@ -1,13 +1,30 @@
 """Search subcommands: latam, fast."""
 
 import time
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import typer
+
+if TYPE_CHECKING:
+    from flight_watcher.models import SearchResult
 
 from flight_watcher.cli.validators import parse_date, parse_iata
 
 app = typer.Typer(help="Search for flights.", no_args_is_help=True)
+
+
+def _print_search_error(label: str, result: "SearchResult[Any]") -> None:
+    """Print a structured error message for a failed search result."""
+    parts = [f"[WARN] {label}: {result.error}"]
+    if result.error_category:
+        parts[0] += f" (category={result.error_category.value})"
+    typer.echo(parts[0], err=True)
+    hint = result.hint
+    if not hint and result.error_category:
+        from flight_watcher.errors import get_error_hint
+        hint = get_error_hint(result.error_category)
+    if hint:
+        typer.echo(f"    Hint: {hint}", err=True)
 
 
 @app.command("latam")
@@ -48,16 +65,14 @@ def search_latam(
             typer.echo(f"\nOutbound {origin} \u2192 {dest}:")
             print_offers(offers)
         elif not outbound_result.ok:
-            typer.echo(
-                f"[WARN] Outbound search failed: {outbound_result.error}", err=True
-            )
+            _print_search_error("Outbound search failed", outbound_result)
         if return_result.ok and return_result.data:
             offers = parse_offers(return_result.data)
             offers_count += len(offers)
             typer.echo(f"\nReturn {dest} \u2192 {origin}:")
             print_offers(offers)
         elif not return_result.ok:
-            typer.echo(f"[WARN] Return search failed: {return_result.error}", err=True)
+            _print_search_error("Return search failed", return_result)
     else:
         result = search_latam_oneway(origin, dest, out, headless=headless)
         if result.ok and result.data:
@@ -67,7 +82,7 @@ def search_latam(
         else:
             offers_count = 0
             if not result.ok:
-                typer.echo(f"[WARN] Search failed: {result.error}", err=True)
+                _print_search_error("Search failed", result)
 
     elapsed = time.time() - start
     if offers_count > 0:
@@ -106,15 +121,15 @@ def search_fast(
         )
         total = len(outbound.data or []) + len(inbound.data or [])
         if not outbound.ok:
-            typer.echo(f"[WARN] Outbound search failed: {outbound.error}", err=True)
+            _print_search_error("Outbound search failed", outbound)
         if not inbound.ok:
-            typer.echo(f"[WARN] Return search failed: {inbound.error}", err=True)
+            _print_search_error("Return search failed", inbound)
     else:
         result = search_one_way(origin, dest, date)
         print_results(result.data or [])
         total = len(result.data or [])
         if not result.ok:
-            typer.echo(f"[WARN] Search failed: {result.error}", err=True)
+            _print_search_error("Search failed", result)
 
     if total > 0:
         typer.echo(f"[OK] {total} flights found")

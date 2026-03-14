@@ -596,6 +596,74 @@ class TestSearchCommands:
         assert result.exit_code == 0, result.output
         mock_search.assert_called_once()
 
+    def test_search_error_displays_category(self):
+        from flight_watcher.errors import ErrorCategory
+        from flight_watcher.models import SearchResult
+
+        runner = CliRunner()
+        failed_result = SearchResult.failure(
+            error="BFF response not captured",
+            error_category=ErrorCategory.PAGE_ERROR,
+        )
+
+        with patch(
+            "flight_watcher.latam_scraper.search_latam_oneway",
+            return_value=failed_result,
+        ):
+            result = runner.invoke(
+                app,
+                ["search", "latam", "--origin", "GRU", "--dest", "FOR", "--out", "2026-04-12"],
+            )
+
+        assert "category=page_error" in result.output
+
+    def test_search_error_displays_hint(self):
+        from flight_watcher.errors import ErrorCategory
+        from flight_watcher.models import SearchResult
+
+        runner = CliRunner()
+        failed_result = SearchResult.failure(
+            error="BFF response not captured",
+            error_category=ErrorCategory.PAGE_ERROR,
+            hint="Custom hint for this failure",
+        )
+
+        with patch(
+            "flight_watcher.latam_scraper.search_latam_oneway",
+            return_value=failed_result,
+        ):
+            result = runner.invoke(
+                app,
+                ["search", "latam", "--origin", "GRU", "--dest", "FOR", "--out", "2026-04-12"],
+            )
+
+        assert "Hint:" in result.output
+        assert "Custom hint" in result.output
+
+    def test_search_error_falls_back_to_category_hint(self):
+        from flight_watcher.errors import ErrorCategory
+        from flight_watcher.models import SearchResult
+
+        runner = CliRunner()
+        # hint=None, but error_category is set — should fall back to ERROR_HINTS default
+        failed_result = SearchResult.failure(
+            error="rate limited",
+            error_category=ErrorCategory.RATE_LIMITED,
+        )
+
+        with patch(
+            "flight_watcher.latam_scraper.search_latam_oneway",
+            return_value=failed_result,
+        ):
+            result = runner.invoke(
+                app,
+                ["search", "latam", "--origin", "GRU", "--dest", "FOR", "--out", "2026-04-12"],
+            )
+
+        assert "Hint:" in result.output
+        # RATE_LIMITED hint mentions circuit breaker
+        assert "Circuit breaker" in result.output or "circuit breaker" in result.output.lower()
+
 
 class TestReport:
     def _make_config(self, config_id=1, origin="GRU", destination="FOR"):
