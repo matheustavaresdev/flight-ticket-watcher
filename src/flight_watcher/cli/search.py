@@ -5,6 +5,8 @@ from typing import Optional
 
 import typer
 
+from flight_watcher.cli.validators import parse_date, parse_iata
+
 app = typer.Typer(help="Search for flights.", no_args_is_help=True)
 
 
@@ -17,11 +19,15 @@ def search_latam(
     headless: bool = typer.Option(False, "--headless", help="Run browser in headless mode."),
 ) -> None:
     """Search LATAM flights via browser interception."""
-    from flight_watcher.latam_scraper import parse_offers, print_offers, search_latam_oneway, search_latam_roundtrip
+    from flight_watcher.display import print_offers
+    from flight_watcher.latam_scraper import parse_offers, search_latam_oneway, search_latam_roundtrip
 
     start = time.time()
-    origin = origin.upper()
-    dest = dest.upper()
+    origin = parse_iata(origin)
+    dest = parse_iata(dest)
+    out = str(parse_date(out))
+    if inbound:
+        inbound = str(parse_date(inbound))
 
     if inbound:
         outbound_data, return_data = search_latam_roundtrip(origin, dest, out, inbound, headless=headless)
@@ -64,8 +70,11 @@ def search_fast(
     from flight_watcher.display import print_results
     from flight_watcher.scanner import search_one_way, search_roundtrip
 
-    origin = origin.upper()
-    dest = dest.upper()
+    origin = parse_iata(origin)
+    dest = parse_iata(dest)
+    date = str(parse_date(date))
+    if return_date:
+        return_date = str(parse_date(return_date))
 
     if return_date:
         outbound, inbound = search_roundtrip(origin, dest, date, return_date)
