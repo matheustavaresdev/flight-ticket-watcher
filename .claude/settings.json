@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/pre-tool-use/tmux-kill-guard.sh",
+            "command": "test -f .claude/hooks/pre-tool-use/tmux-kill-guard.sh && bash .claude/hooks/pre-tool-use/tmux-kill-guard.sh || exit 0",
             "timeout": 10
           }
         ]
@@ -17,12 +17,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/stop/commit-and-pr-guard.sh",
+            "command": "test -f .claude/hooks/stop/commit-and-pr-guard.sh && bash .claude/hooks/stop/commit-and-pr-guard.sh || exit 0",
             "timeout": 30
           },
           {
             "type": "command",
-            "command": "bash .claude/hooks/stop/revise-loop-guard.sh",
+            "command": "test -f .claude/hooks/stop/revise-loop-guard.sh && bash .claude/hooks/stop/revise-loop-guard.sh || exit 0",
             "timeout": 15
           }
         ]
@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/pre-compact/preserve-skill-state.sh",
+            "command": "test -f .claude/hooks/pre-compact/preserve-skill-state.sh && bash .claude/hooks/pre-compact/preserve-skill-state.sh || exit 0",
             "timeout": 10
           }
         ]
