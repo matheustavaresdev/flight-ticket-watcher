@@ -514,6 +514,29 @@ class TestHealthCommand:
         assert result.exit_code == 2, result.output
         assert "backoff remaining: 45s" in result.output
 
+    def test_health_cb_backoff_non_numeric_string(self):
+        runner = CliRunner()
+        data = {
+            "status": "healthy",
+            "scanner": "idle",
+            "started_at": "2026-03-14T10:00:00",
+            "circuit_breaker": {
+                "state": "open",
+                "consecutive_failures": 2,
+                "backoff_remaining_sec": "not_a_number",
+            },
+            "db_reachable": True,
+            "last_successful_scans": {},
+            "next_scheduled_scan": None,
+        }
+        urlopen_mock = self._make_urlopen_mock(data)
+
+        with patch("flight_watcher.cli.health.urllib.request.urlopen", urlopen_mock):
+            result = runner.invoke(app, ["health"])
+
+        assert result.exit_code == 2, result.output
+        assert "backoff remaining: not_a_number" in result.output
+
 
 class TestRunsCommand:
     def test_runs_list_shows_recent(self):
@@ -688,6 +711,26 @@ class TestSearchCommands:
         assert result.exit_code != 0
         assert "Invalid date" in result.output
 
+    def test_search_fast_rejects_invalid_calendar_date(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["search", "fast", "--origin", "GRU", "--dest", "FOR", "--date", "2026-02-30"],
+        )
+        assert result.exit_code != 0
+        assert "valid calendar date" in result.output
+        assert "format YYYY-MM-DD" not in result.output
+
+    def test_search_latam_rejects_invalid_calendar_date(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["search", "latam", "--origin", "GRU", "--dest", "FOR", "--out", "2026-02-30"],
+        )
+        assert result.exit_code != 0
+        assert "valid calendar date" in result.output
+        assert "format YYYY-MM-DD" not in result.output
+
     def test_search_fast_invokes_scanner(self):
         from flight_watcher.models import SearchResult
 
@@ -807,9 +850,34 @@ class TestSearchCommands:
             )
 
         assert result.exit_code == 0, result.output
-        assert "category=network_error" in result.output
-        assert "Hint:" in result.output
-        assert "Check connection" in result.output
+        assert "category=network_error" in result.stderr
+        assert "Hint:" in result.stderr
+        assert "Check connection" in result.stderr
+
+    def test_search_error_displays_category_and_hint(self):
+        from flight_watcher.errors import ErrorCategory
+        from flight_watcher.models import SearchResult
+
+        runner = CliRunner()
+        failed_result = SearchResult.failure(
+            error="BFF response not captured",
+            error_category=ErrorCategory.PAGE_ERROR,
+            hint="Custom hint for this failure",
+        )
+
+        with patch(
+            "flight_watcher.latam_scraper.search_latam_oneway",
+            return_value=failed_result,
+        ):
+            result = runner.invoke(
+                app,
+                ["search", "latam", "--origin", "GRU", "--dest", "FOR", "--out", "2026-04-12"],
+            )
+
+        assert result.exit_code == 1, result.output
+        assert "category=page_error" in result.stderr
+        assert "Hint:" in result.stderr
+        assert "Custom hint for this failure" in result.stderr
 
 
 class TestReport:
@@ -960,6 +1028,32 @@ class TestReport:
         mock_snaps.assert_called_once_with(session_mock, 1, brand="LIGHT")
         mock_combos.assert_called_once_with(session_mock, 1, brand="LIGHT", limit=None)
         mock_rt.assert_called_once_with(session_mock, 1, brand="LIGHT")
+
+    def test_report_show_with_custom_times(self):
+        runner = CliRunner()
+        get_session_mock, session_mock = make_session_mock()
+        cfg = self._make_config()
+        session_mock.get.return_value = cfg
+        snap = self._make_snapshot(
+            departure_hour=14,
+            departure_minute=30,
+            arrival_hour=17,
+            arrival_minute=45,
+        )
+
+        with (
+            patch("flight_watcher.cli.report.get_session", get_session_mock),
+            patch(
+                "flight_watcher.cli.report.get_latest_snapshots", return_value=[snap]
+            ),
+            patch("flight_watcher.cli.report.best_combinations", return_value=[]),
+            patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]),
+        ):
+            result = runner.invoke(app, ["report", "show", "1"])
+
+        assert result.exit_code == 0, result.output
+        assert "14:30" in result.output
+        assert "17:45" in result.output
 
     def test_report_show_top_limits_rows(self):
         runner = CliRunner()
