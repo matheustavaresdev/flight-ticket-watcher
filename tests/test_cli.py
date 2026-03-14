@@ -297,8 +297,6 @@ class TestVerboseFlag:
 class TestHealthCommand:
     def _make_urlopen_mock(self, data: dict, status: int = 200):
         """Return a mock for urllib.request.urlopen as a context manager."""
-        from unittest.mock import MagicMock
-
         body = json.dumps(data).encode()
         resp_mock = MagicMock()
         resp_mock.read.return_value = body
@@ -324,7 +322,7 @@ class TestHealthCommand:
         }
         urlopen_mock = self._make_urlopen_mock(data)
 
-        with patch("urllib.request.urlopen", urlopen_mock):
+        with patch("flight_watcher.cli.health.urllib.request.urlopen", urlopen_mock):
             result = runner.invoke(app, ["health"])
 
         assert result.exit_code == 0, result.output
@@ -346,7 +344,7 @@ class TestHealthCommand:
         }
         urlopen_mock = self._make_urlopen_mock(data)
 
-        with patch("urllib.request.urlopen", urlopen_mock):
+        with patch("flight_watcher.cli.health.urllib.request.urlopen", urlopen_mock):
             result = runner.invoke(app, ["health"])
 
         assert result.exit_code == 1, result.output
@@ -377,7 +375,7 @@ class TestHealthCommand:
         )
         urlopen_mock = MagicMock(side_effect=error)
 
-        with patch("urllib.request.urlopen", urlopen_mock):
+        with patch("flight_watcher.cli.health.urllib.request.urlopen", urlopen_mock):
             result = runner.invoke(app, ["health"])
 
         assert result.exit_code == 1
@@ -391,11 +389,41 @@ class TestHealthCommand:
             side_effect=urllib.error.URLError("Connection refused")
         )
 
-        with patch("urllib.request.urlopen", urlopen_mock):
+        with patch("flight_watcher.cli.health.urllib.request.urlopen", urlopen_mock):
             result = runner.invoke(app, ["health"])
 
         assert result.exit_code == 1
         assert "[FAIL]" in result.output
+
+    def test_health_daemon_http_error_non_json_body(self):
+        runner = CliRunner()
+        import io
+        import urllib.error
+
+        error = urllib.error.HTTPError(
+            url="http://localhost:8080/health",
+            code=502,
+            msg="Bad Gateway",
+            hdrs={},
+            fp=io.BytesIO(b"Bad Gateway"),
+        )
+        urlopen_mock = MagicMock(side_effect=error)
+
+        with patch("flight_watcher.cli.health.urllib.request.urlopen", urlopen_mock):
+            result = runner.invoke(app, ["health"])
+
+        assert result.exit_code == 1
+        assert "HTTP 502" in result.output
+
+    def test_health_invalid_port_env_var(self):
+        runner = CliRunner()
+
+        with patch.dict("os.environ", {"HEALTH_PORT": "abc"}):
+            result = runner.invoke(app, ["health"])
+
+        assert result.exit_code == 1
+        assert "HEALTH_PORT" in result.output
+        assert "abc" in result.output
 
 
 class TestRunsCommand:

@@ -13,7 +13,12 @@ logger = logging.getLogger(__name__)
 
 def health_check() -> None:
     """Query the running daemon's HTTP health endpoint."""
-    port = int(os.environ.get("HEALTH_PORT", "8080"))
+    raw_port = os.environ.get("HEALTH_PORT", "8080")
+    try:
+        port = int(raw_port)
+    except ValueError:
+        typer.echo(f"Error: HEALTH_PORT must be numeric, got '{raw_port}'")
+        raise typer.Exit(1)
     url = f"http://localhost:{port}/health"
 
     try:
