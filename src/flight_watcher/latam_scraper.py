@@ -5,6 +5,8 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
+
+import typer
 from patchright.sync_api import sync_playwright
 
 from flight_watcher.browser_profiles import get_random_profile
@@ -106,7 +108,7 @@ def search_latam(
         browser.close()
 
     elapsed = time.time() - start
-    print(f"Search completed in {elapsed:.1f}s")
+    logger.info("Search completed in %.1fs", elapsed)
 
     if "error" in captured:
         logger.warning(
@@ -167,7 +169,7 @@ def search_latam_oneway(
         browser.close()
 
     elapsed = time.time() - start
-    print(f"Search completed in {elapsed:.1f}s")
+    logger.info("Search completed in %.1fs", elapsed)
 
     if "error" in captured:
         logger.warning(
@@ -216,9 +218,9 @@ def search_latam_roundtrip(
                     and "content" in data
                 ):
                     bff_responses.append(data)
-                    print(f"  [BFF] captured {len(data.get('content', []))} offers")
+                    logger.info("BFF captured %d offers", len(data.get("content", [])))
             except Exception as e:
-                print(f"  [BFF] error: {e}")
+                logger.warning("BFF error: %s", e)
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless, channel="chrome")
@@ -251,7 +253,7 @@ def search_latam_roundtrip(
         if bff_responses:
             outbound_data = bff_responses[0]
             breaker.record_success()
-            print(f"Outbound: {len(outbound_data.get('content', []))} offers")
+            logger.info("Outbound: %d offers", len(outbound_data.get("content", [])))
 
         # Step 2: Dismiss cookie consent if present
         page.wait_for_timeout(2000)
@@ -314,7 +316,7 @@ def search_latam_roundtrip(
                 timeout=90_000,
             ):
                 continuar.click(timeout=10_000)
-            print("Return BFF captured")
+            logger.debug("Return BFF response captured")
         except Exception as exc:
             category = classify_error(exc)
             if not _failure_recorded:
@@ -325,13 +327,13 @@ def search_latam_roundtrip(
         # The last bff_responses entry should be the return leg
         if len(bff_responses) >= 2:
             return_data = bff_responses[-1]
-            print(f"Return: {len(return_data.get('content', []))} offers")
+            logger.info("Return: %d offers", len(return_data.get("content", [])))
 
         context.close()
         browser.close()
 
     elapsed = time.time() - start
-    print(f"Search completed in {elapsed:.1f}s")
+    logger.info("Search completed in %.1fs", elapsed)
     return outbound_data, return_data
 
 
@@ -379,7 +381,7 @@ def print_offers(offers: list[dict]) -> None:
             and b["currency"] is not None
         )
         stops_str = "direct" if offer["stops"] == 0 else f"{offer['stops']} stop(s)"
-        print(
+        typer.echo(
             f"{i:2d}. {offer['flight_code']}  "
             f"{offer['origin']}->{offer['destination']}  "
             f"{offer['departure']} ({offer['duration_min']}min, {stops_str})  "
@@ -394,42 +396,5 @@ def save_response(data: dict, origin: str, destination: str) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     filename = output_dir / f"latam-{origin}-{destination}-{timestamp}.json"
     filename.write_text(json.dumps(data, indent=2, ensure_ascii=False))
-    print(f"Response saved to {filename}")
+    logger.info("Response saved to %s", filename)
     return filename
-
-
-if __name__ == "__main__":
-    # Default test route: Fortaleza -> São Paulo, round trip
-    ORIGIN = "FOR"
-    DESTINATION = "GRU"
-    OUTBOUND = "2026-04-12"
-    INBOUND = "2026-04-17"
-
-    print(f"Searching LATAM: {ORIGIN} -> {DESTINATION}")
-    print(f"  Outbound: {OUTBOUND}  Inbound: {INBOUND}")
-    print()
-
-    data = search_latam(ORIGIN, DESTINATION, OUTBOUND, INBOUND)
-
-    if data:
-        save_response(data, ORIGIN, DESTINATION)
-        offers = parse_offers(data)
-        print(f"\nFound {len(offers)} flights:\n")
-        print_offers(offers)
-
-        # Feasibility assessment
-        print("\n--- Feasibility Result ---")
-        print(f"Total offers: {len(offers)}")
-        has_brands = any(len(o["brands"]) > 0 for o in offers)
-        print(f"Has fare classes (brands): {has_brands}")
-        if has_brands:
-            brand_ids = set()
-            for o in offers:
-                for b in o["brands"]:
-                    brand_ids.add(b["id"])
-            print(f"Brand IDs found: {sorted(brand_ids)}")
-            print("STATUS: GREEN - Feasibility confirmed")
-        else:
-            print("STATUS: YELLOW - Response captured but no brand data")
-    else:
-        print("\nSTATUS: RED - Failed to capture BFF response")

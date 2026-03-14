@@ -3,9 +3,9 @@
 from datetime import date
 from unittest.mock import MagicMock, patch
 
-from click.testing import CliRunner
+from typer.testing import CliRunner
 
-from flight_watcher.cli import cli
+from flight_watcher.cli import app
 from flight_watcher.models import SearchConfig
 
 
@@ -35,19 +35,10 @@ class TestConfigAdd:
 
         session_mock.flush.side_effect = flush_side_effect
 
-        with patch("flight_watcher.cli.get_session", get_session_mock):
+        with patch("flight_watcher.cli.config.get_session", get_session_mock):
             result = runner.invoke(
-                cli,
-                [
-                    "config",
-                    "add",
-                    "FOR",
-                    "MIA",
-                    "2026-06-21",
-                    "2026-06-28",
-                    "--max-days",
-                    "15",
-                ],
+                app,
+                ["config", "add", "FOR", "MIA", "2026-06-21", "2026-06-28", "--max-days", "15"],
             )
 
         assert result.exit_code == 0, result.output
@@ -66,19 +57,10 @@ class TestConfigAdd:
         runner = CliRunner()
         get_session_mock, _ = make_session_mock()
 
-        with patch("flight_watcher.cli.get_session", get_session_mock):
+        with patch("flight_watcher.cli.config.get_session", get_session_mock):
             result = runner.invoke(
-                cli,
-                [
-                    "config",
-                    "add",
-                    "ABCD",
-                    "MIA",
-                    "2026-06-21",
-                    "2026-06-28",
-                    "--max-days",
-                    "15",
-                ],
+                app,
+                ["config", "add", "ABCD", "MIA", "2026-06-21", "2026-06-28", "--max-days", "15"],
             )
 
         assert result.exit_code != 0
@@ -88,19 +70,10 @@ class TestConfigAdd:
         runner = CliRunner()
         get_session_mock, _ = make_session_mock()
 
-        with patch("flight_watcher.cli.get_session", get_session_mock):
+        with patch("flight_watcher.cli.config.get_session", get_session_mock):
             result = runner.invoke(
-                cli,
-                [
-                    "config",
-                    "add",
-                    "12",
-                    "MIA",
-                    "2026-06-21",
-                    "2026-06-28",
-                    "--max-days",
-                    "15",
-                ],
+                app,
+                ["config", "add", "12", "MIA", "2026-06-21", "2026-06-28", "--max-days", "15"],
             )
 
         assert result.exit_code != 0
@@ -110,9 +83,9 @@ class TestConfigAdd:
         runner = CliRunner()
         get_session_mock, _ = make_session_mock()
 
-        with patch("flight_watcher.cli.get_session", get_session_mock):
+        with patch("flight_watcher.cli.config.get_session", get_session_mock):
             result = runner.invoke(
-                cli,
+                app,
                 # must_stay_until (June 21) is before must_arrive_by (June 28)
                 [
                     "config",
@@ -134,19 +107,10 @@ class TestConfigAdd:
         runner = CliRunner()
         get_session_mock, _ = make_session_mock()
 
-        with patch("flight_watcher.cli.get_session", get_session_mock):
+        with patch("flight_watcher.cli.config.get_session", get_session_mock):
             result = runner.invoke(
-                cli,
-                [
-                    "config",
-                    "add",
-                    "FOR",
-                    "MIA",
-                    "2026-06-21",
-                    "2026-06-28",
-                    "--max-days",
-                    "1",
-                ],
+                app,
+                ["config", "add", "FOR", "MIA", "2026-06-21", "2026-06-28", "--max-days", "1"],
             )
 
         assert result.exit_code != 0
@@ -163,19 +127,10 @@ class TestConfigAdd:
 
         session_mock.flush.side_effect = flush_side_effect
 
-        with patch("flight_watcher.cli.get_session", get_session_mock):
+        with patch("flight_watcher.cli.config.get_session", get_session_mock):
             result = runner.invoke(
-                cli,
-                [
-                    "config",
-                    "add",
-                    "for",
-                    "mia",
-                    "2026-06-21",
-                    "2026-06-28",
-                    "--max-days",
-                    "15",
-                ],
+                app,
+                ["config", "add", "for", "mia", "2026-06-21", "2026-06-28", "--max-days", "15"],
             )
 
         assert result.exit_code == 0, result.output
@@ -205,17 +160,14 @@ class TestConfigList:
         active_cfg = self._make_config(
             1, "FOR", "MIA", date(2026, 6, 21), date(2026, 6, 28), 15, active=True
         )
-        self._make_config(
-            2, "GRU", "LIS", date(2026, 7, 1), date(2026, 7, 10), 20, active=False
-        )
 
         # When include_all=False, only active configs are returned
         session_mock.execute.return_value.scalars.return_value.all.return_value = [
             active_cfg
         ]
 
-        with patch("flight_watcher.cli.get_session", get_session_mock):
-            result = runner.invoke(cli, ["config", "list"])
+        with patch("flight_watcher.cli.config.get_session", get_session_mock):
+            result = runner.invoke(app, ["config", "list"])
 
         assert result.exit_code == 0, result.output
         assert "FOR" in result.output
@@ -241,8 +193,8 @@ class TestConfigList:
             inactive_cfg,
         ]
 
-        with patch("flight_watcher.cli.get_session", get_session_mock):
-            result = runner.invoke(cli, ["config", "list", "--all"])
+        with patch("flight_watcher.cli.config.get_session", get_session_mock):
+            result = runner.invoke(app, ["config", "list", "--all"])
 
         assert result.exit_code == 0, result.output
         assert "FOR" in result.output
@@ -250,8 +202,8 @@ class TestConfigList:
         assert "LIS" in result.output
 
 
-class TestConfigDeactivate:
-    def test_valid_id_sets_active_false(self):
+class TestConfigToggle:
+    def test_valid_id_toggles_active_false(self):
         runner = CliRunner()
         get_session_mock, session_mock = make_session_mock()
 
@@ -260,14 +212,14 @@ class TestConfigDeactivate:
         cfg.active = True
         session_mock.get.return_value = cfg
 
-        with patch("flight_watcher.cli.get_session", get_session_mock):
-            result = runner.invoke(cli, ["config", "deactivate", "5"])
+        with patch("flight_watcher.cli.config.get_session", get_session_mock):
+            result = runner.invoke(app, ["config", "toggle", "5"])
 
         assert result.exit_code == 0, result.output
         assert cfg.active is False
         session_mock.get.assert_called_once_with(SearchConfig, 5)
         assert "5" in result.output
-        assert "deactivated" in result.output.lower()
+        assert "inactive" in result.output.lower()
 
     def test_nonexistent_id_returns_error(self):
         runner = CliRunner()
@@ -275,8 +227,8 @@ class TestConfigDeactivate:
 
         session_mock.get.return_value = None
 
-        with patch("flight_watcher.cli.get_session", get_session_mock):
-            result = runner.invoke(cli, ["config", "deactivate", "999"])
+        with patch("flight_watcher.cli.config.get_session", get_session_mock):
+            result = runner.invoke(app, ["config", "toggle", "999"])
 
         assert result.exit_code != 0
         assert "999" in result.output

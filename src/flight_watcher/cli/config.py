@@ -1,58 +1,42 @@
-"""CLI entry point for flight-watcher management commands."""
+"""Config subcommands: list, add, toggle."""
 
 from datetime import date
 
-import click
+import typer
 from sqlalchemy import select
 
 from flight_watcher.date_expansion import expand_dates, generate_pairs
 from flight_watcher.db import get_session
 from flight_watcher.models import SearchConfig
 
+app = typer.Typer(help="Manage search configurations.", no_args_is_help=True)
+
 
 def _parse_iata(value: str) -> str:
-    """Validate and uppercase an IATA airport code."""
     code = value.upper()
     if len(code) != 3 or not code.isalpha():
-        raise click.ClickException(
+        raise typer.BadParameter(
             f"Invalid IATA code '{value}': must be exactly 3 alphabetic characters."
         )
     return code
 
 
 def _parse_date(value: str) -> date:
-    """Parse a YYYY-MM-DD date string, raising ClickException on failure."""
     try:
         return date.fromisoformat(value)
     except ValueError:
-        raise click.ClickException(
-            f"Invalid date '{value}': expected format YYYY-MM-DD."
-        )
+        raise typer.BadParameter(f"Invalid date '{value}': expected format YYYY-MM-DD.")
 
 
-@click.group()
-def cli():
-    """Flight Watcher CLI."""
-
-
-@cli.group()
-def config():
-    """Manage search configurations."""
-
-
-@config.command("add")
-@click.argument("origin")
-@click.argument("destination")
-@click.argument("must_arrive_by")
-@click.argument("must_stay_until")
-@click.option(
-    "--max-days", required=True, type=int, help="Maximum trip duration in days."
-)
-def config_add(origin, destination, must_arrive_by, must_stay_until, max_days):
-    """Add a new search configuration.
-
-    Example: python -m flight_watcher config add FOR MIA 2026-06-21 2026-06-28 --max-days 15
-    """
+@app.command("add")
+def config_add(
+    origin: str = typer.Argument(..., help="Origin IATA airport code (e.g. FOR)"),
+    destination: str = typer.Argument(..., help="Destination IATA airport code (e.g. GRU)"),
+    must_arrive_by: str = typer.Argument(..., help="Must arrive by date (YYYY-MM-DD)"),
+    must_stay_until: str = typer.Argument(..., help="Must stay until date (YYYY-MM-DD)"),
+    max_days: int = typer.Option(..., "--max-days", help="Maximum trip duration in days."),
+) -> None:
+    """Add a new search configuration."""
     origin = _parse_iata(origin)
     destination = _parse_iata(destination)
     arrive_by = _parse_date(must_arrive_by)
@@ -61,7 +45,8 @@ def config_add(origin, destination, must_arrive_by, must_stay_until, max_days):
     try:
         outbound_dates, return_dates = expand_dates(arrive_by, stay_until, max_days)
     except ValueError as exc:
-        raise click.ClickException(str(exc))
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
 
     pair_count = len(generate_pairs(outbound_dates, return_dates, max_days))
 
@@ -79,22 +64,18 @@ def config_add(origin, destination, must_arrive_by, must_stay_until, max_days):
         session.flush()
         config_id = search_config.id
 
-    click.echo(
-        f"Added config #{config_id}: {origin} → {destination} "
+    typer.echo(
+        f"Added config #{config_id}: {origin} \u2192 {destination} "
         f"(arrive by {arrive_by}, stay until {stay_until}, max {max_days} days). "
         f"{pair_count} date pairs generated."
     )
+    typer.echo("[OK]")
 
 
-@config.command("list")
-@click.option(
-    "--all",
-    "include_all",
-    is_flag=True,
-    default=False,
-    help="Include inactive configs.",
-)
-def config_list(include_all):
+@app.command("list")
+def config_list(
+    include_all: bool = typer.Option(False, "--all", help="Include inactive configs."),
+) -> None:
     """List search configurations."""
     with get_session() as session:
         stmt = select(SearchConfig).order_by(SearchConfig.id)
@@ -103,24 +84,29 @@ def config_list(include_all):
         configs = session.execute(stmt).scalars().all()
 
     header = f"{'ID':>4}  {'Origin':<8}  {'Dest':<6}  {'Arrive By':<12}  {'Stay Until':<12}  {'Max Days':>8}  {'Active':<6}"
-    click.echo(header)
-    click.echo("-" * len(header))
+    typer.echo(header)
+    typer.echo("-" * len(header))
     for cfg in configs:
-        click.echo(
+        typer.echo(
             f"{cfg.id:>4}  {cfg.origin:<8}  {cfg.destination:<6}  "
             f"{str(cfg.must_arrive_by):<12}  {str(cfg.must_stay_until):<12}  "
             f"{cfg.max_trip_days:>8}  {'Yes' if cfg.active else 'No':<6}"
         )
+    typer.echo("[OK]")
 
 
-@config.command("deactivate")
-@click.argument("config_id", type=int)
-def config_deactivate(config_id):
-    """Deactivate a search configuration by ID."""
+@app.command("toggle")
+def config_toggle(
+    config_id: int = typer.Argument(..., help="Config ID to toggle."),
+) -> None:
+    """Toggle a search configuration active/inactive."""
     with get_session() as session:
         cfg = session.get(SearchConfig, config_id)
         if cfg is None:
-            raise click.ClickException(f"Config {config_id} not found")
-        cfg.active = False
+            typer.echo(f"Error: Config {config_id} not found", err=True)
+            raise typer.Exit(1)
+        cfg.active = not cfg.active
+        new_state = "active" if cfg.active else "inactive"
 
-    click.echo(f"Config #{config_id} deactivated.")
+    typer.echo(f"Config #{config_id} is now {new_state}.")
+    typer.echo("[OK]")
