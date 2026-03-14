@@ -42,7 +42,7 @@ def show(
         destination = config.destination
 
         # Section 1: Top Flights
-        brands_to_show = [brand] if brand else ["LIGHT", "STANDARD", "FULL"]
+        brands_to_show = [brand] if brand else ["ECONOMY", "LIGHT", "STANDARD", "FULL"]
         all_snapshots = []
         for b in brands_to_show:
             snaps = get_latest_snapshots(session, config_id, brand=b)
@@ -70,7 +70,7 @@ def show(
 
         # Section 2: Best by Stay Length
         typer.echo("── Best by Stay Length " + "─" * 37)
-        b_arg = brand if brand else "LIGHT"
+        b_arg = brand if brand else "ECONOMY"
         combos = best_combinations(session, config_id, brand=b_arg)
 
         header2 = f"  {'':2}  {'Days':>4}  {'Outbound':<12}  {'Return':<12}  {'Out Price':>12}  {'Ret Price':>12}  {'Total':>12}"
@@ -95,7 +95,7 @@ def show(
         typer.echo("── Roundtrip vs One-Way " + "─" * 36)
         rt_rows = roundtrip_vs_oneway(session, config_id, brand=b_arg)
 
-        header3 = f"  {'Outbound':<12}  {'Return':<12}  {'RT Total':>12}  {'OW Total':>12}  {'Savings':>8}  {'Rec'}"
+        header3 = f"  {'Outbound':<12}  {'Return':<12}  {'RT Total':>12}  {'OW Total':>12}  {'RT diff':>8}  {'Rec'}"
         typer.echo(header3)
         typer.echo("  " + "-" * (len(header3) - 2))
 
@@ -112,6 +112,7 @@ def show(
                     f"  {str(row['outbound_date']):<12}  {str(row['return_date']):<12}  {rt_p:>12}  {ow_p:>12}  {savings_str:>8}  {row['recommendation']}{sig}"
                 )
             typer.echo("** = significant (>5% savings)")
+            typer.echo("RT diff: negative = roundtrip cheaper; positive = one-way cheaper")
         else:
             typer.echo("  No roundtrip vs one-way data found.")
         typer.echo("")

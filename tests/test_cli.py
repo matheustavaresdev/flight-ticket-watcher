@@ -346,9 +346,9 @@ class TestReport:
         snap = self._make_snapshot()
 
         with patch("flight_watcher.cli.report.get_session", get_session_mock), \
-             patch("flight_watcher.cli.report.get_latest_snapshots", return_value=[snap]) as mock_snaps, \
-             patch("flight_watcher.cli.report.best_combinations", return_value=[]) as mock_combos, \
-             patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]) as mock_rt:
+             patch("flight_watcher.cli.report.get_latest_snapshots", return_value=[snap]), \
+             patch("flight_watcher.cli.report.best_combinations", return_value=[]), \
+             patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]):
             result = runner.invoke(app, ["report", "show", "1"])
 
         assert result.exit_code == 0, result.output
@@ -429,8 +429,8 @@ class TestReport:
 
         with patch("flight_watcher.cli.report.get_session", get_session_mock), \
              patch("flight_watcher.cli.report.get_latest_snapshots", return_value=[snap]) as mock_snaps, \
-             patch("flight_watcher.cli.report.best_combinations", return_value=[]) as mock_combos, \
-             patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]) as mock_rt:
+             patch("flight_watcher.cli.report.best_combinations", return_value=[]), \
+             patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]):
             result = runner.invoke(app, ["report", "show", "1", "--brand", "LIGHT"])
 
         assert result.exit_code == 0, result.output
