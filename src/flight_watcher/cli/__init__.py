@@ -25,9 +25,11 @@ from flight_watcher.cli import runs as runs_module  # noqa: E402
 from flight_watcher.cli import scheduler as scheduler_module  # noqa: E402
 from flight_watcher.cli import search as search_module  # noqa: E402
 from flight_watcher.cli import health as health_module  # noqa: E402
+from flight_watcher.cli import report as report_module  # noqa: E402
 
 app.add_typer(config_module.app, name="config")
 app.add_typer(search_module.app, name="search")
 app.add_typer(runs_module.app, name="runs")
 app.add_typer(scheduler_module.app, name="scheduler")
 app.command("health")(health_module.health_check)
+app.add_typer(report_module.app, name="report")
