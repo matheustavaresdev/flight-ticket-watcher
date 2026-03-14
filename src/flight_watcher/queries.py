@@ -191,10 +191,15 @@ def roundtrip_vs_oneway(
             trip_days = (ret_date - out_date).days
             if trip_days < 0 or trip_days > config.max_trip_days:
                 continue
-            rt_out_price, row_currency = rt_out[out_date]
-            rt_ret_price, _ = rt_ret[ret_date]
-            ow_out_price, _ = ow_out[out_date]
-            ow_ret_price, _ = ow_ret[ret_date]
+            rt_out_price, rt_out_currency = rt_out[out_date]
+            rt_ret_price, rt_ret_currency = rt_ret[ret_date]
+            ow_out_price, ow_out_currency = ow_out[out_date]
+            ow_ret_price, ow_ret_currency = ow_ret[ret_date]
+            # Skip rows where legs disagree on currency — totals would be meaningless.
+            currencies = {rt_out_currency, rt_ret_currency, ow_out_currency, ow_ret_currency}
+            if len(currencies) > 1:
+                continue
+            row_currency = rt_out_currency
             rt_total = rt_out_price + rt_ret_price
             ow_total = ow_out_price + ow_ret_price
             max_total = max(rt_total, ow_total)
