@@ -60,6 +60,8 @@ def test_get_error_hint_returns_hint_for_each_category():
 
 
 def test_get_error_hint_formats_context():
+    # NETWORK_ERROR hint uses angle-bracket placeholders (not Python format strings).
+    # Extra kwargs are accepted but do not substitute into the hint text.
     hint = get_error_hint(
         ErrorCategory.NETWORK_ERROR,
         search_type="fast",
@@ -67,15 +69,18 @@ def test_get_error_hint_formats_context():
         dest="FOR",
         date="2026-04-12",
     )
-    assert "GRU" in hint
-    assert "FOR" in hint
-    assert "2026-04-12" in hint
+    assert isinstance(hint, str)
+    assert len(hint) > 0
+    # Angle-bracket placeholders should appear as literal text in the hint
+    assert "<ORIGIN>" in hint
+    assert "<DEST>" in hint
+    assert "<DATE>" in hint
 
 
 def test_get_error_hint_missing_context_returns_template():
-    # Call with no context — should return the raw template (with unformatted placeholders)
+    # Call with no context — should return the hint string unchanged
     hint = get_error_hint(ErrorCategory.NETWORK_ERROR)
     assert isinstance(hint, str)
     assert len(hint) > 0
-    # Should contain the unformatted placeholder since no context was provided
-    assert "{origin}" in hint or "origin" in hint
+    # Angle-bracket placeholders should be present as instructional text
+    assert "<ORIGIN>" in hint or "origin" in hint.lower()

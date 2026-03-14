@@ -1,16 +1,19 @@
 """Search subcommands: latam, fast."""
 
 import time
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import typer
+
+if TYPE_CHECKING:
+    from flight_watcher.models import SearchResult
 
 from flight_watcher.cli.validators import parse_date, parse_iata
 
 app = typer.Typer(help="Search for flights.", no_args_is_help=True)
 
 
-def _print_search_error(label: str, result) -> None:
+def _print_search_error(label: str, result: "SearchResult[Any]") -> None:
     """Print a structured error message for a failed search result."""
     parts = [f"[WARN] {label}: {result.error}"]
     if result.error_category:

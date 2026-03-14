@@ -44,7 +44,7 @@ ERROR_HINTS: dict[ErrorCategory, str] = {
     ),
     ErrorCategory.NETWORK_ERROR: (
         "Network issue (timeout/DNS/connection). Check internet connectivity. "
-        "Retry: flight-watcher search {search_type} --origin {origin} --dest {dest} --date {date}"
+        "Retry: flight-watcher search <type> --origin <ORIGIN> --dest <DEST> --date <DATE>"
     ),
     ErrorCategory.PAGE_ERROR: (
         "Page structure changed or element not found. The airline may have updated their UI. "
