@@ -1,13 +1,19 @@
 """LATAM Airlines flight search via Patchright + BFF API interception."""
 
+from __future__ import annotations
+
 import json
 import logging
 import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from patchright.sync_api import Response, sync_playwright
+from patchright.sync_api import sync_playwright
+
+if TYPE_CHECKING:
+    from patchright.sync_api import Response
 
 from flight_watcher.browser_profiles import get_random_profile
 from flight_watcher.circuit_breaker import get_breaker
