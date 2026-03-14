@@ -370,8 +370,9 @@ class TestReport:
         s.currency = currency
         s.stops = stops
         s.duration_min = duration_min
-        s.departure_time = datetime(2026, 6, 21, 8, 0)
-        s.arrival_time = datetime(2026, 6, 21, 11, 0)
+        fd = s.flight_date
+        s.departure_time = datetime(fd.year, fd.month, fd.day, 8, 0)
+        s.arrival_time = datetime(fd.year, fd.month, fd.day, 11, 0)
         return s
 
     def test_report_show_prints_top_flights(self):
@@ -433,6 +434,7 @@ class TestReport:
             "savings_pct": 7.8,
             "recommendation": "2x one-way",
             "significant": True,
+            "currency": "BRL",
         }
 
         with patch("flight_watcher.cli.report.get_session", get_session_mock), \
@@ -465,15 +467,15 @@ class TestReport:
 
         with patch("flight_watcher.cli.report.get_session", get_session_mock), \
              patch("flight_watcher.cli.report.get_latest_snapshots", return_value=[snap]) as mock_snaps, \
-             patch("flight_watcher.cli.report.best_combinations", return_value=[]), \
-             patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]):
+             patch("flight_watcher.cli.report.best_combinations", return_value=[]) as mock_combos, \
+             patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]) as mock_rt:
             result = runner.invoke(app, ["report", "show", "1", "--brand", "LIGHT"])
 
         assert result.exit_code == 0, result.output
-        # When --brand LIGHT is passed, get_latest_snapshots is called once with brand="LIGHT"
-        mock_snaps.assert_called_once()
-        call_kwargs = mock_snaps.call_args
-        assert call_kwargs[1].get("brand") == "LIGHT" or (len(call_kwargs[0]) >= 3 and call_kwargs[0][2] == "LIGHT") or "LIGHT" in str(call_kwargs)
+        # When --brand LIGHT is passed, all three query functions receive brand="LIGHT"
+        mock_snaps.assert_called_once_with(session_mock, 1, brand="LIGHT")
+        mock_combos.assert_called_once_with(session_mock, 1, brand="LIGHT", limit=None)
+        mock_rt.assert_called_once_with(session_mock, 1, brand="LIGHT")
 
     def test_report_show_top_limits_rows(self):
         runner = CliRunner()
@@ -490,3 +492,6 @@ class TestReport:
 
         assert result.exit_code == 0, result.output
         assert "Showing top 5 of" in result.output
+        # LA0005-LA0019 are more expensive and must not appear when --top 5 is used
+        for i in range(5, 20):
+            assert f"LA{i:04d}" not in result.output

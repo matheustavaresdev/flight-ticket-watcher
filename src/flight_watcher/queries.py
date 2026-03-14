@@ -83,7 +83,7 @@ def best_combinations(
     session: Session,
     search_config_id: int,
     brand: str = "LIGHT",
-    limit: int = 20,
+    limit: Optional[int] = None,
 ) -> list[dict]:
     """
     Return cheapest (outbound, return) pairs ranked by total price.
@@ -155,6 +155,8 @@ def roundtrip_vs_oneway(
 
     all_snaps = get_latest_snapshots(session, search_config_id, brand=brand)
 
+    currency = all_snaps[0].currency if all_snaps else "BRL"
+
     # Build cheapest-per-date dicts for each combination
     rt_out: dict[date, Decimal] = {}
     rt_ret: dict[date, Decimal] = {}
@@ -208,6 +210,7 @@ def roundtrip_vs_oneway(
                     if rt_total <= ow_total
                     else "2x one-way",
                     "significant": savings_pct > 5,
+                    "currency": currency,
                 }
             )
 
