@@ -61,7 +61,14 @@ def _build_latam_url(
 
 
 def _make_bff_intercept(captured: dict) -> Callable[[Response], None]:
-    """Return a response handler that captures BFF offer data into *captured*."""
+    """Return a response handler that captures BFF offer data into *captured*.
+
+    Note:
+        ``Response`` is imported under ``TYPE_CHECKING`` only, so
+        ``typing.get_type_hints(_make_bff_intercept)`` would raise
+        ``NameError``.  Pass ``localns={'Response': Response}`` after
+        importing it explicitly if runtime introspection is ever needed.
+    """
 
     def on_response(response):
         if "bff/air-offers/v2/offers/search" in response.url:
