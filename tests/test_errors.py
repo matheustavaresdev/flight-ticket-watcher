@@ -1,5 +1,6 @@
 from flight_watcher.errors import (
     ErrorCategory,
+    SearchFailedError,
     classify_error,
     get_retry_strategy,
     get_error_hint,
@@ -86,3 +87,10 @@ def test_get_error_hint_missing_context_returns_template():
     assert "<ORIGIN>" in hint
     assert "<DEST>" in hint
     assert "<DATE>" in hint
+
+
+def test_search_failed_error_carries_error_category():
+    err = SearchFailedError("scan halted", error_category=ErrorCategory.BLOCKED)
+    assert err.error_category == ErrorCategory.BLOCKED
+    assert "scan halted" in str(err)
+    assert isinstance(err, Exception)

@@ -122,3 +122,11 @@ def classify_error(exc: Exception, status_code: int | None = None) -> ErrorCateg
 def get_retry_strategy(category: ErrorCategory) -> RetryStrategy:
     """Get the retry strategy for an error category."""
     return RETRY_STRATEGIES[category]
+
+
+class SearchFailedError(Exception):
+    """Raised when a search fails with a non-skippable error category."""
+
+    def __init__(self, message: str, error_category: ErrorCategory) -> None:
+        super().__init__(message)
+        self.error_category = error_category
