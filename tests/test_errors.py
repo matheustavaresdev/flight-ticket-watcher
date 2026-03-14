@@ -2,6 +2,8 @@ from flight_watcher.errors import (
     ErrorCategory,
     classify_error,
     get_retry_strategy,
+    get_error_hint,
+    ERROR_HINTS,
 )
 
 
@@ -48,3 +50,32 @@ def test_retry_strategy_blocked_no_retry():
     strategy = get_retry_strategy(ErrorCategory.BLOCKED)
     assert strategy.max_retries == 0
     assert strategy.skip_item is False
+
+
+def test_get_error_hint_returns_hint_for_each_category():
+    for category in ErrorCategory:
+        hint = get_error_hint(category)
+        assert isinstance(hint, str)
+        assert len(hint) > 0
+
+
+def test_get_error_hint_formats_context():
+    hint = get_error_hint(
+        ErrorCategory.NETWORK_ERROR,
+        search_type="fast",
+        origin="GRU",
+        dest="FOR",
+        date="2026-04-12",
+    )
+    assert "GRU" in hint
+    assert "FOR" in hint
+    assert "2026-04-12" in hint
+
+
+def test_get_error_hint_missing_context_returns_template():
+    # Call with no context — should return the raw template (with unformatted placeholders)
+    hint = get_error_hint(ErrorCategory.NETWORK_ERROR)
+    assert isinstance(hint, str)
+    assert len(hint) > 0
+    # Should contain the unformatted placeholder since no context was provided
+    assert "{origin}" in hint or "origin" in hint

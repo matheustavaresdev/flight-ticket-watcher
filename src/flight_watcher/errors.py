@@ -37,6 +37,38 @@ RETRY_STRATEGIES: dict[ErrorCategory, RetryStrategy] = {
 }
 
 
+ERROR_HINTS: dict[ErrorCategory, str] = {
+    ErrorCategory.RATE_LIMITED: (
+        "Rate limited (429 or CAPTCHA). Circuit breaker will auto-retry after backoff. "
+        "If persistent, consider increasing MIN_DELAY_SEC/MAX_DELAY_SEC."
+    ),
+    ErrorCategory.NETWORK_ERROR: (
+        "Network issue (timeout/DNS/connection). Check internet connectivity. "
+        "Retry: flight-watcher search {search_type} --origin {origin} --dest {dest} --date {date}"
+    ),
+    ErrorCategory.PAGE_ERROR: (
+        "Page structure changed or element not found. The airline may have updated their UI. "
+        "Check scraper selectors against current site."
+    ),
+    ErrorCategory.BLOCKED: (
+        "Anti-bot block (403). Circuit breaker active — all searches paused. "
+        "If persistent, browser fingerprint or IP may be flagged. "
+        "Check: flight-watcher health"
+    ),
+}
+
+
+def get_error_hint(
+    category: ErrorCategory, **context: str
+) -> str:
+    """Return actionable hint for an error category, formatted with route context."""
+    template = ERROR_HINTS[category]
+    try:
+        return template.format(**context)
+    except KeyError:
+        return template  # return unformatted if placeholders missing
+
+
 def classify_error(exc: Exception, status_code: int | None = None) -> ErrorCategory:
     """Classify an exception into an error category for retry decisions."""
     # Check status code first
