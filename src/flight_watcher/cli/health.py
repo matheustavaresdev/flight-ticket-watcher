@@ -1,54 +1,54 @@
 """Health check command."""
 
+import json
+import logging
+import os
+import urllib.error
+import urllib.request
+
 import typer
+
+logger = logging.getLogger(__name__)
 
 
 def health_check() -> None:
-    """Check DB connection, circuit breaker state, and scheduler status."""
-    from sqlalchemy import text
+    """Query the running daemon's HTTP health endpoint."""
+    port = int(os.environ.get("HEALTH_PORT", "8080"))
+    url = f"http://localhost:{port}/health"
 
-    from flight_watcher.circuit_breaker import get_breaker
-    from flight_watcher.db import get_session
-
-    issues = []
-    db_failed = False
-
-    # DB check
     try:
-        with get_session() as session:
-            session.execute(text("SELECT 1"))
-        db_status = "OK"
-    except Exception as exc:
-        db_status = f"FAIL ({exc})"
-        issues.append("db")
-        db_failed = True
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            body = resp.read()
+            data = json.loads(body)
+    except urllib.error.URLError as exc:
+        typer.echo(f"Daemon not reachable at {url}: {exc.reason}")
+        typer.echo("[FAIL] daemon is not running")
+        raise typer.Exit(1)
 
-    # Circuit breaker
-    breaker_info = get_breaker().status_info()
-    cb_state = breaker_info["state"]
-    cb_failures = breaker_info["consecutive_failures"]
-    cb_remaining = breaker_info.get("backoff_remaining_sec")
+    status = data.get("status", "unknown")
+    scanner = data.get("scanner", "unknown")
+    started_at = data.get("started_at", "unknown")
+    cb = data.get("circuit_breaker", {})
+    cb_state = cb.get("state", "unknown")
+    cb_failures = cb.get("consecutive_failures", 0)
+    cb_backoff = cb.get("backoff_remaining_sec")
+    last_scans = data.get("last_successful_scans", {})
+    next_scan = data.get("next_scheduled_scan")
+
+    typer.echo(f"Daemon status:    {status}")
+    typer.echo(f"Started at:       {started_at}")
+    typer.echo(f"Scanner:          {scanner}")
+    typer.echo(f"Circuit breaker:  {cb_state} (failures={cb_failures})")
+    if cb_backoff is not None:
+        typer.echo(f"  backoff remaining: {cb_backoff:.0f}s")
+    if last_scans:
+        typer.echo("Last successful scans:")
+        for config_id, ts in last_scans.items():
+            typer.echo(f"  {config_id}: {ts}")
+    if next_scan:
+        typer.echo(f"Next scheduled scan: {next_scan}")
 
     if cb_state in ("open", "half_open"):
-        issues.append("circuit_breaker")
-
-    # Scheduler
-    from flight_watcher.scheduler import _scheduler as _sched
-
-    if _sched is not None and _sched.running:
-        sched_status = "Running"
-    else:
-        sched_status = "Not running (daemon mode only)"
-
-    typer.echo(f"DB connection:    {db_status}")
-    typer.echo(f"Circuit breaker:  {cb_state} (failures={cb_failures})")
-    if cb_remaining is not None:
-        typer.echo(f"  backoff remaining: {cb_remaining:.0f}s")
-    typer.echo(f"Scheduler:        {sched_status}")
-
-    if db_failed:
-        typer.echo(f"[FAIL] {len(issues)} issue(s) detected")
-    elif issues:
-        typer.echo(f"[WARN] {len(issues)} issue(s) detected")
+        typer.echo(f"[WARN] circuit breaker is {cb_state}")
     else:
         typer.echo("[OK]")

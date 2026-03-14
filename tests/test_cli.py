@@ -1,5 +1,6 @@
 """Tests for the flight_watcher CLI commands."""
 
+import json
 from datetime import date
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
@@ -39,7 +40,16 @@ class TestConfigAdd:
         with patch("flight_watcher.cli.config.get_session", get_session_mock):
             result = runner.invoke(
                 app,
-                ["config", "add", "FOR", "MIA", "2026-06-21", "2026-06-28", "--max-days", "15"],
+                [
+                    "config",
+                    "add",
+                    "FOR",
+                    "MIA",
+                    "2026-06-21",
+                    "2026-06-28",
+                    "--max-days",
+                    "15",
+                ],
             )
 
         assert result.exit_code == 0, result.output
@@ -61,7 +71,16 @@ class TestConfigAdd:
         with patch("flight_watcher.cli.config.get_session", get_session_mock):
             result = runner.invoke(
                 app,
-                ["config", "add", "ABCD", "MIA", "2026-06-21", "2026-06-28", "--max-days", "15"],
+                [
+                    "config",
+                    "add",
+                    "ABCD",
+                    "MIA",
+                    "2026-06-21",
+                    "2026-06-28",
+                    "--max-days",
+                    "15",
+                ],
             )
 
         assert result.exit_code != 0
@@ -74,7 +93,16 @@ class TestConfigAdd:
         with patch("flight_watcher.cli.config.get_session", get_session_mock):
             result = runner.invoke(
                 app,
-                ["config", "add", "12", "MIA", "2026-06-21", "2026-06-28", "--max-days", "15"],
+                [
+                    "config",
+                    "add",
+                    "12",
+                    "MIA",
+                    "2026-06-21",
+                    "2026-06-28",
+                    "--max-days",
+                    "15",
+                ],
             )
 
         assert result.exit_code != 0
@@ -111,7 +139,16 @@ class TestConfigAdd:
         with patch("flight_watcher.cli.config.get_session", get_session_mock):
             result = runner.invoke(
                 app,
-                ["config", "add", "FOR", "MIA", "2026-06-21", "2026-06-28", "--max-days", "1"],
+                [
+                    "config",
+                    "add",
+                    "FOR",
+                    "MIA",
+                    "2026-06-21",
+                    "2026-06-28",
+                    "--max-days",
+                    "1",
+                ],
             )
 
         assert result.exit_code != 0
@@ -131,7 +168,16 @@ class TestConfigAdd:
         with patch("flight_watcher.cli.config.get_session", get_session_mock):
             result = runner.invoke(
                 app,
-                ["config", "add", "for", "mia", "2026-06-21", "2026-06-28", "--max-days", "15"],
+                [
+                    "config",
+                    "add",
+                    "for",
+                    "mia",
+                    "2026-06-21",
+                    "2026-06-28",
+                    "--max-days",
+                    "15",
+                ],
             )
 
         assert result.exit_code == 0, result.output
@@ -249,23 +295,76 @@ class TestVerboseFlag:
 
 
 class TestHealthCommand:
-    def test_health_shows_status(self):
+    def _make_urlopen_mock(self, data: dict, status: int = 200):
+        """Return a mock for urllib.request.urlopen as a context manager."""
+        from unittest.mock import MagicMock
+
+        body = json.dumps(data).encode()
+        resp_mock = MagicMock()
+        resp_mock.read.return_value = body
+        resp_mock.status = status
+        resp_mock.__enter__ = MagicMock(return_value=resp_mock)
+        resp_mock.__exit__ = MagicMock(return_value=False)
+        urlopen_mock = MagicMock(return_value=resp_mock)
+        return urlopen_mock
+
+    def test_health_daemon_healthy(self):
         runner = CliRunner()
-        get_session_mock, _ = make_session_mock()
-
-        breaker_mock = MagicMock()
-        breaker_mock.status_info.return_value = {
-            "state": "closed",
-            "consecutive_failures": 0,
+        data = {
+            "status": "healthy",
+            "scanner": "idle",
+            "started_at": "2026-03-14T10:00:00",
+            "circuit_breaker": {
+                "state": "closed",
+                "consecutive_failures": 0,
+                "backoff_remaining_sec": None,
+            },
+            "last_successful_scans": {},
+            "next_scheduled_scan": None,
         }
+        urlopen_mock = self._make_urlopen_mock(data)
 
-        with (
-            patch("flight_watcher.db.get_session", get_session_mock),
-            patch("flight_watcher.circuit_breaker.get_breaker", return_value=breaker_mock),
-        ):
+        with patch("urllib.request.urlopen", urlopen_mock):
             result = runner.invoke(app, ["health"])
 
-        assert "[OK]" in result.output, result.output
+        assert result.exit_code == 0, result.output
+        assert "[OK]" in result.output
+
+    def test_health_daemon_degraded_breaker_open(self):
+        runner = CliRunner()
+        data = {
+            "status": "degraded",
+            "scanner": "idle",
+            "started_at": "2026-03-14T10:00:00",
+            "circuit_breaker": {
+                "state": "open",
+                "consecutive_failures": 3,
+                "backoff_remaining_sec": 45.0,
+            },
+            "last_successful_scans": {},
+            "next_scheduled_scan": None,
+        }
+        urlopen_mock = self._make_urlopen_mock(data)
+
+        with patch("urllib.request.urlopen", urlopen_mock):
+            result = runner.invoke(app, ["health"])
+
+        assert result.exit_code == 0, result.output
+        assert "[WARN]" in result.output
+
+    def test_health_daemon_unreachable(self):
+        runner = CliRunner()
+        import urllib.error
+
+        urlopen_mock = MagicMock(
+            side_effect=urllib.error.URLError("Connection refused")
+        )
+
+        with patch("urllib.request.urlopen", urlopen_mock):
+            result = runner.invoke(app, ["health"])
+
+        assert result.exit_code == 1
+        assert "[FAIL]" in result.output
 
 
 class TestRunsCommand:
@@ -293,7 +392,16 @@ class TestSearchCommands:
         ):
             result = runner.invoke(
                 app,
-                ["search", "latam", "--origin", "GRU", "--dest", "FOR", "--out", "2026-04-12"],
+                [
+                    "search",
+                    "latam",
+                    "--origin",
+                    "GRU",
+                    "--dest",
+                    "FOR",
+                    "--out",
+                    "2026-04-12",
+                ],
             )
 
         assert result.exit_code == 0, result.output
@@ -340,12 +448,23 @@ class TestSearchCommands:
         mock_results = [MagicMock()]
 
         with (
-            patch("flight_watcher.scanner.search_one_way", return_value=mock_results) as mock_search,
+            patch(
+                "flight_watcher.scanner.search_one_way", return_value=mock_results
+            ) as mock_search,
             patch("flight_watcher.display.print_results"),
         ):
             result = runner.invoke(
                 app,
-                ["search", "fast", "--origin", "GRU", "--dest", "FOR", "--date", "2026-04-12"],
+                [
+                    "search",
+                    "fast",
+                    "--origin",
+                    "GRU",
+                    "--dest",
+                    "FOR",
+                    "--date",
+                    "2026-04-12",
+                ],
             )
 
         assert result.exit_code == 0, result.output
