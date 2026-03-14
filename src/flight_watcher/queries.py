@@ -155,13 +155,13 @@ def roundtrip_vs_oneway(
 
     all_snaps = get_latest_snapshots(session, search_config_id, brand=brand)
 
-    currency = all_snaps[0].currency if all_snaps else "BRL"
-
-    # Build cheapest-per-date dicts for each combination
-    rt_out: dict[date, Decimal] = {}
-    rt_ret: dict[date, Decimal] = {}
-    ow_out: dict[date, Decimal] = {}
-    ow_ret: dict[date, Decimal] = {}
+    # Build cheapest-per-date dicts for each combination.
+    # Each entry stores (price, currency) so currency is derived from the actual
+    # snapshot used rather than from an arbitrary all_snaps[0].
+    rt_out: dict[date, tuple[Decimal, str]] = {}
+    rt_ret: dict[date, tuple[Decimal, str]] = {}
+    ow_out: dict[date, tuple[Decimal, str]] = {}
+    ow_ret: dict[date, tuple[Decimal, str]] = {}
 
     for s in all_snaps:
         is_out_dir = s.origin == config.origin and s.destination == config.destination
@@ -175,8 +175,8 @@ def roundtrip_vs_oneway(
             continue
 
         existing = target.get(s.flight_date)
-        if existing is None or s.price < existing:
-            target[s.flight_date] = s.price
+        if existing is None or s.price < existing[0]:
+            target[s.flight_date] = (s.price, s.currency)
 
     # Date pairs that have all four components
     out_dates = set(rt_out) & set(ow_out)
@@ -191,8 +191,12 @@ def roundtrip_vs_oneway(
             trip_days = (ret_date - out_date).days
             if trip_days < 0 or trip_days > config.max_trip_days:
                 continue
-            rt_total = rt_out[out_date] + rt_ret[ret_date]
-            ow_total = ow_out[out_date] + ow_ret[ret_date]
+            rt_out_price, row_currency = rt_out[out_date]
+            rt_ret_price, _ = rt_ret[ret_date]
+            ow_out_price, _ = ow_out[out_date]
+            ow_ret_price, _ = ow_ret[ret_date]
+            rt_total = rt_out_price + rt_ret_price
+            ow_total = ow_out_price + ow_ret_price
             max_total = max(rt_total, ow_total)
             savings_pct = (
                 float(abs(rt_total - ow_total) / max_total * 100)
@@ -210,7 +214,7 @@ def roundtrip_vs_oneway(
                     if rt_total <= ow_total
                     else "2x one-way",
                     "significant": savings_pct > 5,
-                    "currency": currency,
+                    "currency": row_currency,
                 }
             )
 

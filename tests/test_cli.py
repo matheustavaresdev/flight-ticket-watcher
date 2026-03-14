@@ -492,6 +492,7 @@ class TestReport:
 
         assert result.exit_code == 0, result.output
         assert "Showing top 5 of" in result.output
-        # LA0005-LA0019 are more expensive and must not appear when --top 5 is used
+        # LA0005-LA0019 are more expensive and must not appear when --top 5 is used.
+        # Relies on price=400+i, so higher index ↔ higher price ↔ outside top-5.
         for i in range(5, 20):
             assert f"LA{i:04d}" not in result.output
