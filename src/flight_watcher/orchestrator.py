@@ -36,19 +36,25 @@ def run_all_scans() -> None:
                 "must_arrive_by": r.must_arrive_by,
                 "must_stay_until": r.must_stay_until,
                 "max_trip_days": r.max_trip_days,
+                "retry_count": r.retry_count,
             }
             for r in rows
         ]
     logger.info("Running scans for %d active config(s)", len(configs))
-    for config in configs:
-        from flight_watcher.scheduler import cancel_retry_job, register_retry_job
+    from flight_watcher.scheduler import cancel_retry_job, register_retry_job
 
+    for config in configs:
         try:
             run_scan(config)
             cancel_retry_job(config["id"])
             with get_session() as session:
                 config_row = session.get(SearchConfig, config["id"])
                 if config_row is not None:
+                    if config["retry_count"] > 0:
+                        logger.info(
+                            "Daily scan succeeded for config %d, reset retry_count",
+                            config["id"],
+                        )
                     config_row.retry_count = 0
         except Exception:  # noqa: BLE001
             # Detailed error is already logged inside run_scan; catch here only to continue

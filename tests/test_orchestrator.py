@@ -756,7 +756,7 @@ class TestRunRetryScan(unittest.TestCase):
 
 
 class TestRunAllScansRetryIntegration(unittest.TestCase):
-    def _make_orm_row(self, id=1):
+    def _make_orm_row(self, id=1, retry_count=0):
         row = MagicMock()
         row.id = id
         row.origin = "GRU"
@@ -764,6 +764,7 @@ class TestRunAllScansRetryIntegration(unittest.TestCase):
         row.must_arrive_by = date(2026, 6, 21)
         row.must_stay_until = date(2026, 6, 28)
         row.max_trip_days = 15
+        row.retry_count = retry_count
         return row
 
     @patch(f"{MODULE}.get_session")
