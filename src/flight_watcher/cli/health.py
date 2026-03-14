@@ -45,6 +45,7 @@ def health_check() -> None:
     cb_state = cb.get("state", "unknown")
     cb_failures = cb.get("consecutive_failures", 0)
     cb_backoff = cb.get("backoff_remaining_sec")
+    db_reachable = data.get("db_reachable", True)
     last_scans = data.get("last_successful_scans", {})
     next_scan = data.get("next_scheduled_scan")
 
@@ -53,7 +54,8 @@ def health_check() -> None:
     typer.echo(f"Scanner:          {scanner}")
     typer.echo(f"Circuit breaker:  {cb_state} (failures={cb_failures})")
     if cb_backoff is not None:
-        typer.echo(f"  backoff remaining: {cb_backoff:.0f}s")
+        typer.echo(f"  backoff remaining: {float(cb_backoff):.0f}s")
+    typer.echo(f"Database:         {'reachable' if db_reachable else 'UNREACHABLE'}")
     if last_scans:
         typer.echo("Last successful scans:")
         for config_id, ts in last_scans.items():
@@ -61,8 +63,11 @@ def health_check() -> None:
     if next_scan:
         typer.echo(f"Next scheduled scan: {next_scan}")
 
-    if cb_state in ("open", "half_open"):
-        typer.echo(f"[WARN] circuit breaker is {cb_state}")
+    if not db_reachable:
+        typer.echo("[FAIL] database is unreachable")
         raise typer.Exit(1)
+    elif cb_state in ("open", "half_open"):
+        typer.echo(f"[WARN] circuit breaker is {cb_state}")
+        raise typer.Exit(2)
     else:
         typer.echo("[OK]")

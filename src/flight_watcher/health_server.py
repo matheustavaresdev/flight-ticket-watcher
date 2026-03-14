@@ -40,6 +40,7 @@ def _get_health_data() -> tuple[dict, int]:
 
     # Get last successful scans
     last_successful_scans: dict = {}
+    db_reachable = True
     try:
         from flight_watcher.db import get_session
 
@@ -54,6 +55,7 @@ def _get_health_data() -> tuple[dict, int]:
             }
     except Exception as e:
         logger.warning("Failed to query last successful scans: %s", e)
+        db_reachable = False
 
     is_shutting_down = scanner_status == ScannerStatus.SHUTTING_DOWN
     http_status = 503 if is_shutting_down else 200
@@ -63,6 +65,7 @@ def _get_health_data() -> tuple[dict, int]:
         "scanner": scanner_status.value,
         "started_at": state.started_at.isoformat(),
         "circuit_breaker": breaker.status_info(),
+        "db_reachable": db_reachable,
         "last_successful_scans": last_successful_scans,
         "next_scheduled_scan": next_scan,
     }
