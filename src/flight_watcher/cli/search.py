@@ -25,9 +25,9 @@ def search_latam(
     start = time.time()
     origin = parse_iata(origin)
     dest = parse_iata(dest)
-    out = str(parse_date(out))
+    out = str(parse_date(out))  # validate and normalize to YYYY-MM-DD
     if inbound:
-        inbound = str(parse_date(inbound))
+        inbound = str(parse_date(inbound))  # validate and normalize to YYYY-MM-DD
 
     if inbound:
         outbound_data, return_data = search_latam_roundtrip(origin, dest, out, inbound, headless=headless)
@@ -72,9 +72,9 @@ def search_fast(
 
     origin = parse_iata(origin)
     dest = parse_iata(dest)
-    date = str(parse_date(date))
+    date = str(parse_date(date))  # validate and normalize to YYYY-MM-DD
     if return_date:
-        return_date = str(parse_date(return_date))
+        return_date = str(parse_date(return_date))  # validate and normalize to YYYY-MM-DD
 
     if return_date:
         outbound, inbound = search_roundtrip(origin, dest, date, return_date)
