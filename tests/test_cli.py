@@ -1,6 +1,8 @@
 """Tests for the flight_watcher CLI commands."""
 
+import io
 import json
+import urllib.error
 from datetime import date
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
@@ -352,9 +354,6 @@ class TestHealthCommand:
 
     def test_health_daemon_shutting_down(self):
         runner = CliRunner()
-        import io
-        import urllib.error
-
         body = json.dumps(
             {
                 "status": "shutting_down",
@@ -383,8 +382,6 @@ class TestHealthCommand:
 
     def test_health_daemon_unreachable(self):
         runner = CliRunner()
-        import urllib.error
-
         urlopen_mock = MagicMock(
             side_effect=urllib.error.URLError("Connection refused")
         )
@@ -397,9 +394,6 @@ class TestHealthCommand:
 
     def test_health_daemon_http_error_non_json_body(self):
         runner = CliRunner()
-        import io
-        import urllib.error
-
         error = urllib.error.HTTPError(
             url="http://localhost:8080/health",
             code=502,
