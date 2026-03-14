@@ -678,6 +678,7 @@ class TestFailureAwareCursorAdvancement(unittest.TestCase):
         with self.assertRaises(SearchFailedError):
             run_scan(config)
 
+        self.assertEqual(mock_search.call_count, 1)
         self.assertIn("scan_run", captured)
         self.assertEqual(captured["scan_run"].status, ScanStatus.FAILED)
         self.assertIsNone(captured["scan_run"].last_successful_date)
@@ -706,6 +707,36 @@ class TestFailureAwareCursorAdvancement(unittest.TestCase):
         with self.assertRaises(SearchFailedError):
             run_scan(config)
 
+        self.assertEqual(mock_search.call_count, 1)
+        self.assertIn("scan_run", captured)
+        self.assertEqual(captured["scan_run"].status, ScanStatus.FAILED)
+        self.assertIsNone(captured["scan_run"].last_successful_date)
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}._find_resumable_run", return_value=None)
+    @patch(f"{MODULE}._search_and_store_oneway")
+    @patch(f"{MODULE}.random_delay")
+    @patch(f"{MODULE}.expand_dates")
+    def test_rate_limited_halts_scan_and_does_not_advance_cursor(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
+        """RATE_LIMITED failure raises SearchFailedError and cursor is NOT advanced."""
+        from flight_watcher.errors import ErrorCategory, SearchFailedError
+        from flight_watcher.models import SearchResult, ScanStatus
+
+        mock_expand.return_value = (["2026-06-13"], ["2026-06-28"])
+        mock_search.return_value = SearchResult.failure(
+            error="429 Too Many Requests", error_category=ErrorCategory.RATE_LIMITED
+        )
+        config = _make_config()
+        mock_session, captured = self._setup_session_and_scan_run(mock_get_session)
+
+        from flight_watcher.orchestrator import run_scan
+
+        with self.assertRaises(SearchFailedError):
+            run_scan(config)
+
+        self.assertEqual(mock_search.call_count, 1)
         self.assertIn("scan_run", captured)
         self.assertEqual(captured["scan_run"].status, ScanStatus.FAILED)
         self.assertIsNone(captured["scan_run"].last_successful_date)
