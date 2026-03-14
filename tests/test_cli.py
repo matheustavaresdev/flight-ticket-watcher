@@ -333,6 +333,7 @@ class TestSearchCommands:
         )
         assert result.exit_code != 0
         assert "Invalid date" in result.output
+
     def test_search_fast_invokes_scanner(self):
         runner = CliRunner()
         mock_results = [MagicMock()]
