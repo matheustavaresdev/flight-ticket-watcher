@@ -3,7 +3,6 @@
 from datetime import date
 from unittest.mock import MagicMock, patch
 
-import pytest
 from click.testing import CliRunner
 
 from flight_watcher.cli import cli
@@ -39,7 +38,16 @@ class TestConfigAdd:
         with patch("flight_watcher.cli.get_session", get_session_mock):
             result = runner.invoke(
                 cli,
-                ["config", "add", "FOR", "MIA", "2026-06-21", "2026-06-28", "--max-days", "15"],
+                [
+                    "config",
+                    "add",
+                    "FOR",
+                    "MIA",
+                    "2026-06-21",
+                    "2026-06-28",
+                    "--max-days",
+                    "15",
+                ],
             )
 
         assert result.exit_code == 0, result.output
@@ -61,7 +69,16 @@ class TestConfigAdd:
         with patch("flight_watcher.cli.get_session", get_session_mock):
             result = runner.invoke(
                 cli,
-                ["config", "add", "ABCD", "MIA", "2026-06-21", "2026-06-28", "--max-days", "15"],
+                [
+                    "config",
+                    "add",
+                    "ABCD",
+                    "MIA",
+                    "2026-06-21",
+                    "2026-06-28",
+                    "--max-days",
+                    "15",
+                ],
             )
 
         assert result.exit_code != 0
@@ -74,7 +91,16 @@ class TestConfigAdd:
         with patch("flight_watcher.cli.get_session", get_session_mock):
             result = runner.invoke(
                 cli,
-                ["config", "add", "12", "MIA", "2026-06-21", "2026-06-28", "--max-days", "15"],
+                [
+                    "config",
+                    "add",
+                    "12",
+                    "MIA",
+                    "2026-06-21",
+                    "2026-06-28",
+                    "--max-days",
+                    "15",
+                ],
             )
 
         assert result.exit_code != 0
@@ -88,7 +114,16 @@ class TestConfigAdd:
             result = runner.invoke(
                 cli,
                 # must_stay_until (June 21) is before must_arrive_by (June 28)
-                ["config", "add", "FOR", "MIA", "2026-06-28", "2026-06-21", "--max-days", "15"],
+                [
+                    "config",
+                    "add",
+                    "FOR",
+                    "MIA",
+                    "2026-06-28",
+                    "2026-06-21",
+                    "--max-days",
+                    "15",
+                ],
             )
 
         assert result.exit_code != 0
@@ -102,7 +137,16 @@ class TestConfigAdd:
         with patch("flight_watcher.cli.get_session", get_session_mock):
             result = runner.invoke(
                 cli,
-                ["config", "add", "FOR", "MIA", "2026-06-21", "2026-06-28", "--max-days", "1"],
+                [
+                    "config",
+                    "add",
+                    "FOR",
+                    "MIA",
+                    "2026-06-21",
+                    "2026-06-28",
+                    "--max-days",
+                    "1",
+                ],
             )
 
         assert result.exit_code != 0
@@ -122,7 +166,16 @@ class TestConfigAdd:
         with patch("flight_watcher.cli.get_session", get_session_mock):
             result = runner.invoke(
                 cli,
-                ["config", "add", "for", "mia", "2026-06-21", "2026-06-28", "--max-days", "15"],
+                [
+                    "config",
+                    "add",
+                    "for",
+                    "mia",
+                    "2026-06-21",
+                    "2026-06-28",
+                    "--max-days",
+                    "15",
+                ],
             )
 
         assert result.exit_code == 0, result.output
@@ -132,7 +185,9 @@ class TestConfigAdd:
 
 
 class TestConfigList:
-    def _make_config(self, id, origin, dest, arrive_by, stay_until, max_days, active=True):
+    def _make_config(
+        self, id, origin, dest, arrive_by, stay_until, max_days, active=True
+    ):
         cfg = MagicMock(spec=SearchConfig)
         cfg.id = id
         cfg.origin = origin
@@ -150,12 +205,14 @@ class TestConfigList:
         active_cfg = self._make_config(
             1, "FOR", "MIA", date(2026, 6, 21), date(2026, 6, 28), 15, active=True
         )
-        inactive_cfg = self._make_config(
+        self._make_config(
             2, "GRU", "LIS", date(2026, 7, 1), date(2026, 7, 10), 20, active=False
         )
 
         # When include_all=False, only active configs are returned
-        session_mock.execute.return_value.scalars.return_value.all.return_value = [active_cfg]
+        session_mock.execute.return_value.scalars.return_value.all.return_value = [
+            active_cfg
+        ]
 
         with patch("flight_watcher.cli.get_session", get_session_mock):
             result = runner.invoke(cli, ["config", "list"])

@@ -1,7 +1,7 @@
 import unittest
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 MODULE = "flight_watcher.orchestrator"
 
@@ -37,6 +37,7 @@ def _make_flight_result(
     arrival_time="09:30",
 ):
     from flight_watcher.models import FlightResult
+
     return FlightResult(
         origin=origin,
         destination=destination,
@@ -51,8 +52,11 @@ def _make_flight_result(
     )
 
 
-def _make_scan_run(id=1, config_id=1, status=None, last_successful_date=None, started_at=None):
+def _make_scan_run(
+    id=1, config_id=1, status=None, last_successful_date=None, started_at=None
+):
     from flight_watcher.models import ScanStatus
+
     m = MagicMock()
     m.id = id
     m.search_config_id = config_id
@@ -92,6 +96,7 @@ class TestRunAllScans(unittest.TestCase):
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
         from flight_watcher.orchestrator import run_all_scans
+
         run_all_scans()
 
         self.assertEqual(mock_run_scan.call_count, 2)
@@ -127,6 +132,7 @@ class TestRunAllScans(unittest.TestCase):
         mock_run_scan.side_effect = [Exception("boom"), None]
 
         from flight_watcher.orchestrator import run_all_scans
+
         run_all_scans()  # should not raise
 
         self.assertEqual(mock_run_scan.call_count, 2)
@@ -140,6 +146,7 @@ class TestRunScan(unittest.TestCase):
             # simulate session.flush() populating the id
             def flush_side_effect():
                 pass
+
             mock_session.flush.side_effect = flush_side_effect
         mock_get_session.return_value.__enter__ = lambda s: mock_session
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
@@ -150,26 +157,34 @@ class TestRunScan(unittest.TestCase):
     @patch(f"{MODULE}._search_and_store_oneway", return_value=2)
     @patch(f"{MODULE}.random_delay")
     @patch(f"{MODULE}.expand_dates")
-    def test_run_scan_creates_scan_run(self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session):
+    def test_run_scan_creates_scan_run(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
         """Verifies ScanRun created with status=RUNNING."""
         from flight_watcher.models import ScanRun, ScanStatus
+
         mock_expand.return_value = (["2026-06-13"], ["2026-06-28"])
         config = _make_config()
         captured_status_at_add = {}
         mock_session = MagicMock()
+
         # Capture the status at the time add() is called, before run_scan mutates it
         def add_side_effect(obj):
             if isinstance(obj, ScanRun):
                 obj.id = 1
                 captured_status_at_add["status"] = obj.status
+
         mock_session.add.side_effect = add_side_effect
         mock_get_session.return_value.__enter__ = lambda s: mock_session
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
         from flight_watcher.orchestrator import run_scan
+
         run_scan(config)
 
-        self.assertIn("status", captured_status_at_add, "ScanRun was not added to session")
+        self.assertIn(
+            "status", captured_status_at_add, "ScanRun was not added to session"
+        )
         self.assertEqual(captured_status_at_add["status"], ScanStatus.RUNNING)
 
     @patch(f"{MODULE}.get_session")
@@ -177,23 +192,29 @@ class TestRunScan(unittest.TestCase):
     @patch(f"{MODULE}._search_and_store_oneway", return_value=1)
     @patch(f"{MODULE}.random_delay")
     @patch(f"{MODULE}.expand_dates")
-    def test_run_scan_marks_completed_on_success(self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session):
+    def test_run_scan_marks_completed_on_success(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
         """Verifies status=COMPLETED and completed_at are set on success."""
         from flight_watcher.models import ScanRun, ScanStatus
+
         mock_expand.return_value = (["2026-06-13"], ["2026-06-28"])
         config = _make_config()
         captured = {}
 
         mock_session = MagicMock()
+
         def add_side_effect(obj):
             if isinstance(obj, ScanRun):
                 obj.id = 1
                 captured["scan_run"] = obj
+
         mock_session.add.side_effect = add_side_effect
         mock_get_session.return_value.__enter__ = lambda s: mock_session
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
         from flight_watcher.orchestrator import run_scan
+
         run_scan(config)
 
         self.assertIn("scan_run", captured)
@@ -205,24 +226,30 @@ class TestRunScan(unittest.TestCase):
     @patch(f"{MODULE}._search_and_store_oneway")
     @patch(f"{MODULE}.random_delay")
     @patch(f"{MODULE}.expand_dates")
-    def test_run_scan_marks_failed_on_error(self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session):
+    def test_run_scan_marks_failed_on_error(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
         """Verifies status=FAILED and error_message saved on unhandled error."""
         from flight_watcher.models import ScanRun, ScanStatus
+
         mock_expand.return_value = (["2026-06-13"], ["2026-06-28"])
         mock_search.side_effect = RuntimeError("search exploded")
         config = _make_config()
         captured = {}
 
         mock_session = MagicMock()
+
         def add_side_effect(obj):
             if isinstance(obj, ScanRun):
                 obj.id = 1
                 captured["scan_run"] = obj
+
         mock_session.add.side_effect = add_side_effect
         mock_get_session.return_value.__enter__ = lambda s: mock_session
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
         from flight_watcher.orchestrator import run_scan
+
         with self.assertRaises(RuntimeError):
             run_scan(config)
 
@@ -235,23 +262,29 @@ class TestRunScan(unittest.TestCase):
     @patch(f"{MODULE}._search_and_store_oneway", return_value=2)
     @patch(f"{MODULE}.random_delay")
     @patch(f"{MODULE}.expand_dates")
-    def test_run_scan_updates_cursor_after_each_date(self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session):
+    def test_run_scan_updates_cursor_after_each_date(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
         """Verifies last_successful_date is updated after each date."""
         from flight_watcher.models import ScanRun
+
         mock_expand.return_value = (["2026-06-13", "2026-06-14"], ["2026-06-28"])
         config = _make_config()
         captured = {}
 
         mock_session = MagicMock()
+
         def add_side_effect(obj):
             if isinstance(obj, ScanRun):
                 obj.id = 1
                 captured["scan_run"] = obj
+
         mock_session.add.side_effect = add_side_effect
         mock_get_session.return_value.__enter__ = lambda s: mock_session
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
         from flight_watcher.orchestrator import run_scan
+
         run_scan(config)
 
         # All unique dates: 2026-06-13, 2026-06-14, 2026-06-28
@@ -263,23 +296,29 @@ class TestRunScan(unittest.TestCase):
     @patch(f"{MODULE}._search_and_store_oneway", return_value=0)
     @patch(f"{MODULE}.random_delay")
     @patch(f"{MODULE}.expand_dates")
-    def test_empty_search_results_continues(self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session):
+    def test_empty_search_results_continues(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
         """Empty results (circuit breaker or no flights) don't fail the run."""
         from flight_watcher.models import ScanRun, ScanStatus
+
         mock_expand.return_value = (["2026-06-13", "2026-06-14"], ["2026-06-28"])
         config = _make_config()
         captured = {}
 
         mock_session = MagicMock()
+
         def add_side_effect(obj):
             if isinstance(obj, ScanRun):
                 obj.id = 1
                 captured["scan_run"] = obj
+
         mock_session.add.side_effect = add_side_effect
         mock_get_session.return_value.__enter__ = lambda s: mock_session
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
         from flight_watcher.orchestrator import run_scan
+
         run_scan(config)
 
         self.assertIn("scan_run", captured)
@@ -290,21 +329,27 @@ class TestRunScan(unittest.TestCase):
     @patch(f"{MODULE}._search_and_store_oneway", return_value=1)
     @patch(f"{MODULE}.random_delay")
     @patch(f"{MODULE}.expand_dates")
-    def test_run_scan_expands_dates_and_searches(self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session):
+    def test_run_scan_expands_dates_and_searches(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
         """Verifies search_one_way called for each date in both directions via _search_and_store_oneway."""
         from flight_watcher.models import ScanRun
+
         mock_expand.return_value = (["2026-06-13"], ["2026-06-28"])
         config = _make_config(origin="GRU", destination="GIG")
 
         mock_session = MagicMock()
+
         def add_side_effect(obj):
             if isinstance(obj, ScanRun):
                 obj.id = 1
+
         mock_session.add.side_effect = add_side_effect
         mock_get_session.return_value.__enter__ = lambda s: mock_session
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
         from flight_watcher.orchestrator import run_scan
+
         run_scan(config)
 
         # unique dates: 2026-06-13, 2026-06-28 — each searched in both directions
@@ -317,14 +362,20 @@ class TestFindResumableRun(unittest.TestCase):
     def test_find_resumable_run_returns_todays_failed_run(self, mock_dt):
         """Returns a FAILED run started today."""
         from flight_watcher.models import ScanStatus
+
         mock_dt.now.return_value = datetime(2026, 3, 11, 10, 0, tzinfo=timezone.utc)
         mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
 
         mock_session = MagicMock()
-        run = _make_scan_run(id=5, status=ScanStatus.FAILED, started_at=datetime(2026, 3, 11, 3, 0, tzinfo=timezone.utc))
+        run = _make_scan_run(
+            id=5,
+            status=ScanStatus.FAILED,
+            started_at=datetime(2026, 3, 11, 3, 0, tzinfo=timezone.utc),
+        )
         mock_session.scalars.return_value.first.return_value = run
 
         from flight_watcher.orchestrator import _find_resumable_run
+
         result = _find_resumable_run(mock_session, config_id=1)
         self.assertIs(result, run)
 
@@ -338,6 +389,7 @@ class TestFindResumableRun(unittest.TestCase):
         mock_session.scalars.return_value.first.return_value = None
 
         from flight_watcher.orchestrator import _find_resumable_run
+
         result = _find_resumable_run(mock_session, config_id=1)
         self.assertIsNone(result)
 
@@ -345,14 +397,20 @@ class TestFindResumableRun(unittest.TestCase):
     def test_find_resumable_run_returns_none_if_from_yesterday(self, mock_dt):
         """Returns None if the only run was from yesterday."""
         from flight_watcher.models import ScanStatus
+
         mock_dt.now.return_value = datetime(2026, 3, 11, 10, 0, tzinfo=timezone.utc)
         mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
 
         mock_session = MagicMock()
-        run = _make_scan_run(id=5, status=ScanStatus.FAILED, started_at=datetime(2026, 3, 10, 3, 0, tzinfo=timezone.utc))
+        run = _make_scan_run(
+            id=5,
+            status=ScanStatus.FAILED,
+            started_at=datetime(2026, 3, 10, 3, 0, tzinfo=timezone.utc),
+        )
         mock_session.scalars.return_value.first.return_value = run
 
         from flight_watcher.orchestrator import _find_resumable_run
+
         result = _find_resumable_run(mock_session, config_id=1)
         self.assertIsNone(result)
 
@@ -360,12 +418,14 @@ class TestFindResumableRun(unittest.TestCase):
 class TestDatesAfterCursor(unittest.TestCase):
     def test_dates_after_cursor_no_cursor(self):
         from flight_watcher.orchestrator import _dates_after_cursor
+
         dates = ["2026-06-13", "2026-06-14", "2026-06-28"]
         result = _dates_after_cursor(dates, None)
         self.assertEqual(result, dates)
 
     def test_dates_after_cursor_filters_completed(self):
         from flight_watcher.orchestrator import _dates_after_cursor
+
         dates = ["2026-06-13", "2026-06-14", "2026-06-15", "2026-06-28"]
         cursor = date(2026, 6, 14)
         result = _dates_after_cursor(dates, cursor)
@@ -373,6 +433,7 @@ class TestDatesAfterCursor(unittest.TestCase):
 
     def test_dates_after_cursor_all_done(self):
         from flight_watcher.orchestrator import _dates_after_cursor
+
         dates = ["2026-06-13", "2026-06-14"]
         cursor = date(2026, 6, 14)
         result = _dates_after_cursor(dates, cursor)
@@ -397,15 +458,21 @@ class TestFlightResultToSnapshot(unittest.TestCase):
             arrival_time="09:30",
         )
 
-        snapshot = _flight_result_to_snapshot(result, scan_run_id=42, search_type=SearchType.ONEWAY)
+        snapshot = _flight_result_to_snapshot(
+            result, scan_run_id=42, search_type=SearchType.ONEWAY
+        )
 
         self.assertEqual(snapshot.scan_run_id, 42)
         self.assertEqual(snapshot.origin, "GRU")
         self.assertEqual(snapshot.destination, "GIG")
         self.assertEqual(snapshot.flight_date, date(2026, 6, 13))
         self.assertEqual(snapshot.flight_code, "LATAM Airlines")
-        self.assertEqual(snapshot.departure_time, datetime(2026, 6, 13, 8, 0, tzinfo=timezone.utc))
-        self.assertEqual(snapshot.arrival_time, datetime(2026, 6, 13, 9, 30, tzinfo=timezone.utc))
+        self.assertEqual(
+            snapshot.departure_time, datetime(2026, 6, 13, 8, 0, tzinfo=timezone.utc)
+        )
+        self.assertEqual(
+            snapshot.arrival_time, datetime(2026, 6, 13, 9, 30, tzinfo=timezone.utc)
+        )
         self.assertEqual(snapshot.duration_min, 90)
         self.assertEqual(snapshot.stops, 0)
         self.assertEqual(snapshot.brand, "ECONOMY")
@@ -431,7 +498,9 @@ class TestFlightResultToSnapshot(unittest.TestCase):
             arrival_time="11:00",
             fetched_at=datetime(2026, 6, 13, 10, 0),  # naive datetime
         )
-        snapshot = _flight_result_to_snapshot(result, scan_run_id=1, search_type=SearchType.ONEWAY)
+        snapshot = _flight_result_to_snapshot(
+            result, scan_run_id=1, search_type=SearchType.ONEWAY
+        )
         self.assertEqual(snapshot.fetched_at.tzinfo, timezone.utc)
 
     def test_overnight_flight_arrival_advances_one_day(self):
@@ -444,9 +513,15 @@ class TestFlightResultToSnapshot(unittest.TestCase):
             departure_time="23:00",
             arrival_time="01:30",
         )
-        snapshot = _flight_result_to_snapshot(result, scan_run_id=1, search_type=SearchType.ONEWAY)
-        self.assertEqual(snapshot.departure_time, datetime(2026, 6, 13, 23, 0, tzinfo=timezone.utc))
-        self.assertEqual(snapshot.arrival_time, datetime(2026, 6, 14, 1, 30, tzinfo=timezone.utc))
+        snapshot = _flight_result_to_snapshot(
+            result, scan_run_id=1, search_type=SearchType.ONEWAY
+        )
+        self.assertEqual(
+            snapshot.departure_time, datetime(2026, 6, 13, 23, 0, tzinfo=timezone.utc)
+        )
+        self.assertEqual(
+            snapshot.arrival_time, datetime(2026, 6, 14, 1, 30, tzinfo=timezone.utc)
+        )
 
 
 class TestRunRoundtripPhase(unittest.TestCase):
@@ -476,10 +551,16 @@ class TestCursorResumption(unittest.TestCase):
     @patch(f"{MODULE}._search_and_store_oneway", return_value=1)
     @patch(f"{MODULE}.random_delay")
     @patch(f"{MODULE}.expand_dates")
-    def test_cursor_resumption_skips_completed_dates(self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session):
+    def test_cursor_resumption_skips_completed_dates(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
         """Dates at or before cursor are skipped."""
-        from flight_watcher.models import ScanRun, ScanStatus
-        mock_expand.return_value = (["2026-06-13", "2026-06-14", "2026-06-15"], ["2026-06-28"])
+        from flight_watcher.models import ScanStatus
+
+        mock_expand.return_value = (
+            ["2026-06-13", "2026-06-14", "2026-06-15"],
+            ["2026-06-28"],
+        )
 
         # Resumable run with cursor at 2026-06-14
         resumable = _make_scan_run(
@@ -495,6 +576,7 @@ class TestCursorResumption(unittest.TestCase):
         mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
 
         from flight_watcher.orchestrator import run_scan
+
         run_scan(config)
 
         # Only 2026-06-15 and 2026-06-28 remain (2 dates × 2 directions = 4 calls)
@@ -503,7 +585,9 @@ class TestCursorResumption(unittest.TestCase):
 
 class TestSearchAndStoreOneway(unittest.TestCase):
     @patch(f"{MODULE}.search_one_way")
-    def test_search_and_store_oneway_calls_search_and_stores_snapshots(self, mock_search_one_way):
+    def test_search_and_store_oneway_calls_search_and_stores_snapshots(
+        self, mock_search_one_way
+    ):
         """_search_and_store_oneway converts FlightResult list to PriceSnapshot list and calls add_all."""
         from flight_watcher.models import PriceSnapshot, SearchType
         from flight_watcher.orchestrator import _search_and_store_oneway
@@ -524,7 +608,9 @@ class TestSearchAndStoreOneway(unittest.TestCase):
         mock_session = MagicMock()
         scan_run = _make_scan_run(id=7)
 
-        count = _search_and_store_oneway(mock_session, scan_run, "GRU", "GIG", "2026-06-13")
+        count = _search_and_store_oneway(
+            mock_session, scan_run, "GRU", "GIG", "2026-06-13"
+        )
 
         self.assertEqual(count, 1)
         mock_session.add_all.assert_called_once()
@@ -539,3 +625,203 @@ class TestSearchAndStoreOneway(unittest.TestCase):
         self.assertEqual(snapshot.brand, "ECONOMY")
         self.assertEqual(snapshot.search_type, SearchType.ONEWAY)
         self.assertEqual(snapshot.flight_date, date(2026, 6, 13))
+
+
+def _make_config_row(id=1, retry_count=0, needs_attention=False):
+    from datetime import date
+
+    row = MagicMock()
+    row.id = id
+    row.origin = "GRU"
+    row.destination = "GIG"
+    row.must_arrive_by = date(2026, 6, 21)
+    row.must_stay_until = date(2026, 6, 28)
+    row.max_trip_days = 15
+    row.retry_count = retry_count
+    row.needs_attention = needs_attention
+    return row
+
+
+class TestRunRetryScan(unittest.TestCase):
+    def setUp(self):
+        import flight_watcher.scheduler as sched_mod
+
+        sched_mod._scheduler = None
+
+    def tearDown(self):
+        import flight_watcher.scheduler as sched_mod
+
+        sched_mod._scheduler = None
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}.run_scan")
+    @patch("flight_watcher.scheduler.cancel_retry_job")
+    def test_success_resets_retry_count_and_cancels_job(
+        self, mock_cancel, mock_run_scan, mock_get_session
+    ):
+        config_row = _make_config_row(id=1, retry_count=3)
+        mock_session = MagicMock()
+        mock_session.get.return_value = config_row
+        mock_get_session.return_value.__enter__ = lambda s: mock_session
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        from flight_watcher.orchestrator import run_retry_scan
+
+        run_retry_scan(1)
+
+        mock_run_scan.assert_called_once()
+        self.assertEqual(config_row.retry_count, 0)
+        mock_cancel.assert_called_once_with(1)
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}.run_scan")
+    @patch("flight_watcher.scheduler.cancel_retry_job")
+    def test_failure_under_max_increments_retry_count(
+        self, mock_cancel, mock_run_scan, mock_get_session
+    ):
+        config_row = _make_config_row(id=1, retry_count=0)
+        mock_session = MagicMock()
+        mock_session.get.return_value = config_row
+        mock_get_session.return_value.__enter__ = lambda s: mock_session
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+        mock_run_scan.side_effect = RuntimeError("scan failed")
+
+        from flight_watcher.orchestrator import run_retry_scan
+
+        run_retry_scan(1)
+
+        self.assertEqual(config_row.retry_count, 1)
+        self.assertFalse(config_row.needs_attention)
+        mock_cancel.assert_not_called()
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}.run_scan")
+    @patch("flight_watcher.scheduler.cancel_retry_job")
+    @patch("flight_watcher.scheduler.RETRY_MAX_ATTEMPTS", 3)
+    def test_failure_at_max_sets_needs_attention_and_cancels_job(
+        self, mock_cancel, mock_run_scan, mock_get_session
+    ):
+        # retry_count starts at 2; after increment it will be 3 == RETRY_MAX_ATTEMPTS
+        config_row = _make_config_row(id=1, retry_count=2)
+        mock_session = MagicMock()
+        mock_session.get.return_value = config_row
+        mock_get_session.return_value.__enter__ = lambda s: mock_session
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+        mock_run_scan.side_effect = RuntimeError("scan failed")
+
+        from flight_watcher.orchestrator import run_retry_scan
+
+        run_retry_scan(1)
+
+        self.assertEqual(config_row.retry_count, 3)
+        self.assertTrue(config_row.needs_attention)
+        mock_cancel.assert_called_once_with(1)
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}.run_scan")
+    def test_missing_config_logs_warning_and_returns(
+        self, mock_run_scan, mock_get_session
+    ):
+        mock_session = MagicMock()
+        mock_session.get.return_value = None
+        mock_get_session.return_value.__enter__ = lambda s: mock_session
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        from flight_watcher.orchestrator import run_retry_scan
+
+        with self.assertLogs("flight_watcher.orchestrator", level="WARNING") as cm:
+            run_retry_scan(99)
+
+        mock_run_scan.assert_not_called()
+        self.assertTrue(any("99" in line for line in cm.output))
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}.run_scan")
+    def test_needs_attention_config_logs_warning_and_returns(
+        self, mock_run_scan, mock_get_session
+    ):
+        config_row = _make_config_row(id=1, needs_attention=True)
+        mock_session = MagicMock()
+        mock_session.get.return_value = config_row
+        mock_get_session.return_value.__enter__ = lambda s: mock_session
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        from flight_watcher.orchestrator import run_retry_scan
+
+        with self.assertLogs("flight_watcher.orchestrator", level="WARNING") as cm:
+            run_retry_scan(1)
+
+        mock_run_scan.assert_not_called()
+        self.assertTrue(any("needs_attention" in line for line in cm.output))
+
+
+class TestRunAllScansRetryIntegration(unittest.TestCase):
+    def _make_orm_row(self, id=1):
+        row = MagicMock()
+        row.id = id
+        row.origin = "GRU"
+        row.destination = "GIG"
+        row.must_arrive_by = date(2026, 6, 21)
+        row.must_stay_until = date(2026, 6, 28)
+        row.max_trip_days = 15
+        return row
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}.run_scan")
+    @patch("flight_watcher.scheduler.cancel_retry_job")
+    def test_scan_success_calls_cancel_retry_job(
+        self, mock_cancel, mock_run_scan, mock_get_session
+    ):
+        orm1 = self._make_orm_row(id=1)
+        mock_session = MagicMock()
+        mock_session.scalars.return_value.all.return_value = [orm1]
+        mock_get_session.return_value.__enter__ = lambda s: mock_session
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        from flight_watcher.orchestrator import run_all_scans
+
+        run_all_scans()
+
+        mock_cancel.assert_called_once_with(1)
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}.run_scan")
+    @patch("flight_watcher.scheduler.register_retry_job")
+    def test_scan_failure_calls_register_retry_job(
+        self, mock_register, mock_run_scan, mock_get_session
+    ):
+        orm1 = self._make_orm_row(id=2)
+        mock_session = MagicMock()
+        mock_session.scalars.return_value.all.return_value = [orm1]
+        mock_get_session.return_value.__enter__ = lambda s: mock_session
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+        mock_run_scan.side_effect = RuntimeError("scan failed")
+
+        from flight_watcher.orchestrator import run_all_scans
+
+        run_all_scans()  # should not raise
+
+        mock_register.assert_called_once_with(2)
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}.run_scan")
+    @patch("flight_watcher.scheduler.cancel_retry_job")
+    @patch("flight_watcher.scheduler.register_retry_job")
+    def test_multiple_configs_correct_retry_jobs(
+        self, mock_register, mock_cancel, mock_run_scan, mock_get_session
+    ):
+        orm1 = self._make_orm_row(id=1)
+        orm2 = self._make_orm_row(id=2)
+        mock_session = MagicMock()
+        mock_session.scalars.return_value.all.return_value = [orm1, orm2]
+        mock_get_session.return_value.__enter__ = lambda s: mock_session
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+        # Config 1 succeeds, config 2 fails
+        mock_run_scan.side_effect = [None, RuntimeError("boom")]
+
+        from flight_watcher.orchestrator import run_all_scans
+
+        run_all_scans()
+
+        mock_cancel.assert_called_once_with(1)
+        mock_register.assert_called_once_with(2)

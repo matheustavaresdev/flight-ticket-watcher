@@ -21,6 +21,8 @@ class TestSearchConfig:
             "must_stay_until",
             "max_trip_days",
             "active",
+            "retry_count",
+            "needs_attention",
             "created_at",
             "updated_at",
         }
