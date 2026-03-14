@@ -31,4 +31,4 @@ fi
 alembic upgrade head
 
 # Replace shell with app process (proper PID 1 signal forwarding)
-exec python -m flight_watcher
+exec python -m flight_watcher scheduler start
