@@ -83,7 +83,7 @@ def best_combinations(
     session: Session,
     search_config_id: int,
     brand: str = "LIGHT",
-    limit: Optional[int] = None,
+    limit: Optional[int] = 20,
 ) -> list[dict]:
     """
     Return cheapest (outbound, return) pairs ranked by total price.
@@ -119,7 +119,9 @@ def best_combinations(
     # Cross-join: group by trip_days keeping cheapest
     results_by_trip_days: dict[int, dict] = {}
     for out_date, (out_price, currency) in cheapest_out.items():
-        for ret_date, (ret_price, _) in cheapest_ret.items():
+        for ret_date, (ret_price, ret_currency) in cheapest_ret.items():
+            if currency != ret_currency:
+                continue
             trip_days = (ret_date - out_date).days
             if trip_days < 0 or trip_days > config.max_trip_days:
                 continue
