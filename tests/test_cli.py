@@ -288,7 +288,7 @@ class TestSearchCommands:
         with (
             patch("flight_watcher.latam_scraper.search_latam_oneway", return_value=mock_data) as mock_search,
             patch("flight_watcher.latam_scraper.parse_offers", return_value=mock_offers),
-            patch("flight_watcher.latam_scraper.print_offers"),
+            patch("flight_watcher.display.print_offers"),
         ):
             result = runner.invoke(
                 app,
@@ -298,6 +298,41 @@ class TestSearchCommands:
         assert result.exit_code == 0, result.output
         mock_search.assert_called_once()
 
+    def test_search_latam_rejects_invalid_iata(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["search", "latam", "--origin", "GRUU", "--dest", "GRU", "--out", "2026-04-01"],
+        )
+        assert result.exit_code != 0
+        assert "Invalid IATA" in result.output
+
+    def test_search_latam_rejects_invalid_date(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["search", "latam", "--origin", "GRU", "--dest", "CGH", "--out", "2026/04/01"],
+        )
+        assert result.exit_code != 0
+        assert "Invalid date" in result.output
+
+    def test_search_fast_rejects_invalid_iata(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["search", "fast", "--origin", "GRUU", "--dest", "GRU", "--date", "2026-04-01"],
+        )
+        assert result.exit_code != 0
+        assert "Invalid IATA" in result.output
+
+    def test_search_fast_rejects_invalid_date(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["search", "fast", "--origin", "GRU", "--dest", "CGH", "--date", "2026/04/01"],
+        )
+        assert result.exit_code != 0
+        assert "Invalid date" in result.output
     def test_search_fast_invokes_scanner(self):
         runner = CliRunner()
         mock_results = [MagicMock()]

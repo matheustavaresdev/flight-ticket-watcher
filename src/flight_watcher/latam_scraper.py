@@ -6,7 +6,6 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-import typer
 from patchright.sync_api import sync_playwright
 
 from flight_watcher.browser_profiles import get_random_profile
@@ -368,25 +367,6 @@ def parse_offers(data: dict) -> list[dict]:
             )
         offers.append(offer)
     return offers
-
-
-def print_offers(offers: list[dict]) -> None:
-    """Print offers in a human-readable format."""
-    for i, offer in enumerate(offers, 1):
-        brands_str = " | ".join(
-            f"{b['name']}: {b['currency']} {b['price']:.2f}"
-            for b in offer["brands"]
-            if b["price"] is not None
-            and b["name"] is not None
-            and b["currency"] is not None
-        )
-        stops_str = "direct" if offer["stops"] == 0 else f"{offer['stops']} stop(s)"
-        typer.echo(
-            f"{i:2d}. {offer['flight_code']}  "
-            f"{offer['origin']}->{offer['destination']}  "
-            f"{offer['departure']} ({offer['duration_min']}min, {stops_str})  "
-            f"[{brands_str}]"
-        )
 
 
 def save_response(data: dict, origin: str, destination: str) -> Path:

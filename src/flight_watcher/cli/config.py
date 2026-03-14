@@ -1,31 +1,14 @@
 """Config subcommands: list, add, toggle."""
 
-from datetime import date
-
 import typer
 from sqlalchemy import select
 
+from flight_watcher.cli.validators import parse_date, parse_iata
 from flight_watcher.date_expansion import expand_dates, generate_pairs
 from flight_watcher.db import get_session
 from flight_watcher.models import SearchConfig
 
 app = typer.Typer(help="Manage search configurations.", no_args_is_help=True)
-
-
-def _parse_iata(value: str) -> str:
-    code = value.upper()
-    if len(code) != 3 or not code.isalpha():
-        raise typer.BadParameter(
-            f"Invalid IATA code '{value}': must be exactly 3 alphabetic characters."
-        )
-    return code
-
-
-def _parse_date(value: str) -> date:
-    try:
-        return date.fromisoformat(value)
-    except ValueError:
-        raise typer.BadParameter(f"Invalid date '{value}': expected format YYYY-MM-DD.")
 
 
 @app.command("add")
@@ -37,10 +20,10 @@ def config_add(
     max_days: int = typer.Option(..., "--max-days", help="Maximum trip duration in days."),
 ) -> None:
     """Add a new search configuration."""
-    origin = _parse_iata(origin)
-    destination = _parse_iata(destination)
-    arrive_by = _parse_date(must_arrive_by)
-    stay_until = _parse_date(must_stay_until)
+    origin = parse_iata(origin)
+    destination = parse_iata(destination)
+    arrive_by = parse_date(must_arrive_by)
+    stay_until = parse_date(must_stay_until)
 
     try:
         outbound_dates, return_dates = expand_dates(arrive_by, stay_until, max_days)
