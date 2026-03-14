@@ -349,7 +349,38 @@ class TestHealthCommand:
         with patch("urllib.request.urlopen", urlopen_mock):
             result = runner.invoke(app, ["health"])
 
-        assert result.exit_code == 0, result.output
+        assert result.exit_code == 1, result.output
+        assert "[WARN]" in result.output
+
+    def test_health_daemon_shutting_down(self):
+        runner = CliRunner()
+        import io
+        import urllib.error
+
+        body = json.dumps(
+            {
+                "status": "shutting_down",
+                "scanner": "stopping",
+                "circuit_breaker": {
+                    "state": "closed",
+                    "consecutive_failures": 0,
+                    "backoff_remaining_sec": None,
+                },
+            }
+        ).encode()
+        error = urllib.error.HTTPError(
+            url="http://localhost:8080/health",
+            code=503,
+            msg="Service Unavailable",
+            hdrs={},
+            fp=io.BytesIO(body),
+        )
+        urlopen_mock = MagicMock(side_effect=error)
+
+        with patch("urllib.request.urlopen", urlopen_mock):
+            result = runner.invoke(app, ["health"])
+
+        assert result.exit_code == 1
         assert "[WARN]" in result.output
 
     def test_health_daemon_unreachable(self):

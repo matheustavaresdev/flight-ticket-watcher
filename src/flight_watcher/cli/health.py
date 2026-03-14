@@ -20,6 +20,11 @@ def health_check() -> None:
         with urllib.request.urlopen(url, timeout=5) as resp:
             body = resp.read()
             data = json.loads(body)
+    except urllib.error.HTTPError as exc:
+        body = exc.read()
+        data = json.loads(body)
+        typer.echo(f"Daemon is {data.get('status', 'unhealthy')} [WARN]")
+        raise typer.Exit(1)
     except urllib.error.URLError as exc:
         typer.echo(f"Daemon not reachable at {url}: {exc.reason}")
         typer.echo("[FAIL] daemon is not running")
@@ -50,5 +55,6 @@ def health_check() -> None:
 
     if cb_state in ("open", "half_open"):
         typer.echo(f"[WARN] circuit breaker is {cb_state}")
+        raise typer.Exit(1)
     else:
         typer.echo("[OK]")
