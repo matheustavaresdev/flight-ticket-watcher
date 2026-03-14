@@ -182,6 +182,7 @@ def run_scan(config: dict) -> None:
                     flight_date,
                 )
                 if not result_out.ok:
+                    assert result_out.error_category is not None, "failure result must carry error_category"
                     strategy = get_retry_strategy(result_out.error_category)
                     if not strategy.skip_item:
                         raise SearchFailedError(
@@ -207,6 +208,7 @@ def run_scan(config: dict) -> None:
                     flight_date,
                 )
                 if not result_ret.ok:
+                    assert result_ret.error_category is not None, "failure result must carry error_category"
                     strategy = get_retry_strategy(result_ret.error_category)
                     if not strategy.skip_item:
                         raise SearchFailedError(
