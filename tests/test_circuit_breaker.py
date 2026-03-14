@@ -2,7 +2,11 @@
 
 from unittest.mock import patch
 
-from flight_watcher.circuit_breaker import CircuitBreaker, CircuitState, _DEFAULT_FAILURE_THRESHOLD
+from flight_watcher.circuit_breaker import (
+    CircuitBreaker,
+    CircuitState,
+    _DEFAULT_FAILURE_THRESHOLD,
+)
 from flight_watcher.errors import ErrorCategory
 
 CB_MODULE = "flight_watcher.circuit_breaker"
@@ -107,6 +111,7 @@ def test_get_breaker_returns_singleton():
     with patch.dict("os.environ", {"CB_FAILURE_THRESHOLD": "5"}):
         # Reset the module-level singleton
         import flight_watcher.circuit_breaker as mod
+
         mod._breaker = None
         b1 = mod.get_breaker()
         b2 = mod.get_breaker()
@@ -117,6 +122,7 @@ def test_get_breaker_returns_singleton():
 
 def test_get_breaker_invalid_threshold_falls_back_to_default():
     import flight_watcher.circuit_breaker as mod
+
     for bad_value in ("abc", "0", "-1", ""):
         mod._breaker = None
         with patch.dict("os.environ", {"CB_FAILURE_THRESHOLD": bad_value}):
@@ -133,5 +139,5 @@ def test_half_open_allows_only_one_probe():
     # Force HALF_OPEN
     with patch(f"{CB_MODULE}.time.monotonic", return_value=cb._opened_at + 1):
         _ = cb.state  # trigger transition
-    assert cb.allow_request() is True   # first probe allowed
+    assert cb.allow_request() is True  # first probe allowed
     assert cb.allow_request() is False  # second probe denied

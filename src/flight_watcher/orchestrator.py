@@ -24,7 +24,9 @@ logger = logging.getLogger(__name__)
 def run_all_scans() -> None:
     """Top-level entry: load active configs, run scan for each."""
     with get_session() as session:
-        rows = session.scalars(select(SearchConfig).where(SearchConfig.active == True)).all()  # noqa: E712
+        rows = session.scalars(
+            select(SearchConfig).where(SearchConfig.active == True)  # noqa: E712
+        ).all()
         # Extract plain scalars while session is open to avoid DetachedInstanceError
         configs = [
             {
@@ -34,16 +36,90 @@ def run_all_scans() -> None:
                 "must_arrive_by": r.must_arrive_by,
                 "must_stay_until": r.must_stay_until,
                 "max_trip_days": r.max_trip_days,
+                "retry_count": r.retry_count,
             }
             for r in rows
         ]
     logger.info("Running scans for %d active config(s)", len(configs))
+    from flight_watcher.scheduler import cancel_retry_job, register_retry_job
+
     for config in configs:
         try:
             run_scan(config)
+            cancel_retry_job(config["id"])
+            with get_session() as session:
+                config_row = session.get(SearchConfig, config["id"])
+                if config_row is not None:
+                    if config["retry_count"] > 0:
+                        logger.info(
+                            "Daily scan succeeded for config %d, reset retry_count",
+                            config["id"],
+                        )
+                    config_row.retry_count = 0
         except Exception:  # noqa: BLE001
             # Detailed error is already logged inside run_scan; catch here only to continue
-            pass  # noqa: S110
+            register_retry_job(config["id"])
+
+
+def run_retry_scan(config_id: int) -> None:
+    """Retry job callable: runs a scan for a single config, managing retry state."""
+    from flight_watcher.scheduler import (
+        cancel_retry_job,
+        RETRY_MAX_ATTEMPTS,
+        RETRY_INTERVAL_MINUTES,
+    )
+
+    with get_session() as session:
+        config_row = session.get(SearchConfig, config_id)
+        if config_row is None:
+            logger.warning("run_retry_scan: config %d not found, skipping", config_id)
+            return
+        if config_row.needs_attention:
+            logger.warning(
+                "run_retry_scan: config %d is needs_attention, skipping", config_id
+            )
+            return
+        config = {
+            "id": config_row.id,
+            "origin": config_row.origin,
+            "destination": config_row.destination,
+            "must_arrive_by": config_row.must_arrive_by,
+            "must_stay_until": config_row.must_stay_until,
+            "max_trip_days": config_row.max_trip_days,
+        }
+
+    try:
+        run_scan(config)
+    except Exception:  # noqa: BLE001
+        with get_session() as session:
+            config_row = session.get(SearchConfig, config_id)
+            if config_row is not None:
+                config_row.retry_count += 1
+                if config_row.retry_count >= RETRY_MAX_ATTEMPTS:
+                    config_row.needs_attention = True
+                    cancel_retry_job(config_id)
+                    logger.warning(
+                        "Config %d marked as needs_attention after %d retries",
+                        config_id,
+                        config_row.retry_count,
+                    )
+                else:
+                    logger.info(
+                        "Retry %d/%d failed for config %d, next retry in %dmin",
+                        config_row.retry_count,
+                        RETRY_MAX_ATTEMPTS,
+                        config_id,
+                        RETRY_INTERVAL_MINUTES,
+                    )
+        return
+
+    # Success path
+    with get_session() as session:
+        config_row = session.get(SearchConfig, config_id)
+        if config_row is not None:
+            config_row.retry_count = 0
+    cancel_retry_job(config_id)
+    logger.info("Retry succeeded for config %d, resuming daily schedule", config_id)
 
 
 def run_scan(config: dict) -> None:
@@ -71,7 +147,9 @@ def run_scan(config: dict) -> None:
             scan_run.error_message = None
             logger.info(
                 "Resuming scan run %d for config %d from cursor %s",
-                scan_run.id, config["id"], cursor,
+                scan_run.id,
+                config["id"],
+                cursor,
             )
         else:
             scan_run = ScanRun(
@@ -85,20 +163,31 @@ def run_scan(config: dict) -> None:
         remaining_dates = _dates_after_cursor(all_dates, cursor)
         logger.info(
             "Scanning %d date(s) for config %d (origin=%s, dest=%s)",
-            len(remaining_dates), config["id"], config["origin"], config["destination"],
+            len(remaining_dates),
+            config["id"],
+            config["origin"],
+            config["destination"],
         )
 
         try:
             for flight_date in remaining_dates:
                 # Outbound direction: origin → destination
                 count_out = _search_and_store_oneway(
-                    session, scan_run, config["origin"], config["destination"], flight_date
+                    session,
+                    scan_run,
+                    config["origin"],
+                    config["destination"],
+                    flight_date,
                 )
                 random_delay()
 
                 # Return direction: destination → origin
                 count_ret = _search_and_store_oneway(
-                    session, scan_run, config["destination"], config["origin"], flight_date
+                    session,
+                    scan_run,
+                    config["destination"],
+                    config["origin"],
+                    flight_date,
                 )
                 random_delay()
 
@@ -109,7 +198,9 @@ def run_scan(config: dict) -> None:
                 session.flush()
                 logger.debug(
                     "Date %s: stored %d outbound + %d return snapshots",
-                    flight_date, count_out, count_ret,
+                    flight_date,
+                    count_out,
+                    count_ret,
                 )
 
             scan_run.status = ScanStatus.COMPLETED
@@ -140,7 +231,11 @@ def _find_resumable_run(session: Session, config_id: int) -> ScanRun | None:
     ).first()
     if result is None:
         return None
-    run_date = result.started_at.date() if result.started_at.tzinfo else result.started_at.date()
+    run_date = (
+        result.started_at.date()
+        if result.started_at.tzinfo
+        else result.started_at.date()
+    )
     if run_date == today:
         return result
     return None
@@ -166,8 +261,7 @@ def _search_and_store_oneway(
         logger.debug("No results for %s→%s on %s", origin, destination, flight_date)
         return 0
     snapshots = [
-        _flight_result_to_snapshot(r, scan_run.id, SearchType.ONEWAY)
-        for r in results
+        _flight_result_to_snapshot(r, scan_run.id, SearchType.ONEWAY) for r in results
     ]
     session.add_all(snapshots)
     return len(snapshots)
@@ -182,8 +276,22 @@ def _flight_result_to_snapshot(
     flight_date = date.fromisoformat(result.date)
     dep_hour, dep_min = map(int, result.departure_time.split(":"))
     arr_hour, arr_min = map(int, result.arrival_time.split(":"))
-    departure_dt = datetime(flight_date.year, flight_date.month, flight_date.day, dep_hour, dep_min, tzinfo=timezone.utc)
-    arrival_dt = datetime(flight_date.year, flight_date.month, flight_date.day, arr_hour, arr_min, tzinfo=timezone.utc)
+    departure_dt = datetime(
+        flight_date.year,
+        flight_date.month,
+        flight_date.day,
+        dep_hour,
+        dep_min,
+        tzinfo=timezone.utc,
+    )
+    arrival_dt = datetime(
+        flight_date.year,
+        flight_date.month,
+        flight_date.day,
+        arr_hour,
+        arr_min,
+        tzinfo=timezone.utc,
+    )
     if arrival_dt < departure_dt:
         arrival_dt += timedelta(days=1)
     return PriceSnapshot(
@@ -200,7 +308,9 @@ def _flight_result_to_snapshot(
         price=Decimal(result.price),
         currency="BRL",
         search_type=search_type,
-        fetched_at=result.fetched_at.replace(tzinfo=timezone.utc) if result.fetched_at.tzinfo is None else result.fetched_at,
+        fetched_at=result.fetched_at.replace(tzinfo=timezone.utc)
+        if result.fetched_at.tzinfo is None
+        else result.fetched_at,
     )
 
 

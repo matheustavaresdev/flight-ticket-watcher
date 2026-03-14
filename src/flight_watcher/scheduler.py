@@ -14,6 +14,8 @@ from flight_watcher.scanner_state import ScannerStatus, get_scanner_state
 logger = logging.getLogger(__name__)
 
 SCAN_HOUR_UTC = int(os.environ.get("SCAN_HOUR_UTC", "3"))
+RETRY_MAX_ATTEMPTS = int(os.environ.get("RETRY_MAX_ATTEMPTS", "24"))
+RETRY_INTERVAL_MINUTES = int(os.environ.get("RETRY_INTERVAL_MINUTES", "60"))
 
 _scheduler: Optional[BackgroundScheduler] = None
 
@@ -93,6 +95,7 @@ def stop_scheduler() -> None:
 def register_scan_job() -> None:
     """Register the daily scan job with the scheduler."""
     from flight_watcher.orchestrator import run_all_scans
+
     scheduler = get_scheduler()
     scheduler.add_job(
         run_all_scans,
@@ -102,4 +105,43 @@ def register_scan_job() -> None:
         replace_existing=True,
         jitter=1800,
     )
-    logger.info("Registered daily_scan job at hour=%d UTC (±30min jitter)", SCAN_HOUR_UTC)
+    logger.info(
+        "Registered daily_scan job at hour=%d UTC (±30min jitter)", SCAN_HOUR_UTC
+    )
+
+
+def _retry_job_id(config_id: int) -> str:
+    return f"retry_config_{config_id}"
+
+
+def register_retry_job(config_id: int) -> None:
+    """Register an hourly retry job for the given config."""
+    from flight_watcher.orchestrator import run_retry_scan
+
+    scheduler = get_scheduler()
+    scheduler.add_job(
+        run_retry_scan,
+        trigger="interval",
+        minutes=RETRY_INTERVAL_MINUTES,
+        id=_retry_job_id(config_id),
+        kwargs={"config_id": config_id},
+        replace_existing=True,
+        misfire_grace_time=300,
+        max_instances=1,
+    )
+    logger.info(
+        "Registered retry job for config %d (every %d min)",
+        config_id,
+        RETRY_INTERVAL_MINUTES,
+    )
+
+
+def cancel_retry_job(config_id: int) -> None:
+    """Cancel the hourly retry job for the given config, if it exists."""
+    from apscheduler.jobstores.base import JobLookupError
+
+    try:
+        get_scheduler().remove_job(_retry_job_id(config_id))
+        logger.info("Cancelled retry job for config %d", config_id)
+    except JobLookupError:
+        pass

@@ -19,8 +19,10 @@ def _create_context(browser):
     profile = get_random_profile()
     logger.debug(
         "Browser profile: locale=%s tz=%s viewport=%dx%d",
-        profile.locale, profile.timezone_id,
-        profile.viewport_width, profile.viewport_height,
+        profile.locale,
+        profile.timezone_id,
+        profile.viewport_width,
+        profile.viewport_height,
     )
     context = browser.new_context(
         locale=profile.locale,
@@ -53,7 +55,7 @@ def search_latam(
     origin: str,
     destination: str,
     outbound: str,  # YYYY-MM-DD
-    inbound: str,   # YYYY-MM-DD
+    inbound: str,  # YYYY-MM-DD
     headless: bool = False,
 ) -> dict | None:
     """
@@ -88,13 +90,17 @@ def search_latam(
         try:
             try:
                 with page.expect_response(
-                    lambda r: "bff/air-offers/v2/offers/search" in r.url and r.status == 200,
+                    lambda r: (
+                        "bff/air-offers/v2/offers/search" in r.url and r.status == 200
+                    ),
                     timeout=30_000,
                 ):
                     page.goto(url, wait_until="domcontentloaded")
             except Exception as exc:
                 category = classify_error(exc)
-                logger.warning("latam search failed (category=%s): %s", category.value, exc)
+                logger.warning(
+                    "latam search failed (category=%s): %s", category.value, exc
+                )
         finally:
             context.close()
         browser.close()
@@ -103,7 +109,9 @@ def search_latam(
     print(f"Search completed in {elapsed:.1f}s")
 
     if "error" in captured:
-        logger.warning("response error (status=%s): %s", captured.get('status'), captured['error'])
+        logger.warning(
+            "response error (status=%s): %s", captured.get("status"), captured["error"]
+        )
         return None
 
     return captured.get("data")
@@ -143,13 +151,17 @@ def search_latam_oneway(
         try:
             try:
                 with page.expect_response(
-                    lambda r: "bff/air-offers/v2/offers/search" in r.url and r.status == 200,
+                    lambda r: (
+                        "bff/air-offers/v2/offers/search" in r.url and r.status == 200
+                    ),
                     timeout=30_000,
                 ):
                     page.goto(url, wait_until="domcontentloaded")
             except Exception as exc:
                 category = classify_error(exc)
-                logger.warning("latam search failed (category=%s): %s", category.value, exc)
+                logger.warning(
+                    "latam search failed (category=%s): %s", category.value, exc
+                )
         finally:
             context.close()
         browser.close()
@@ -158,7 +170,9 @@ def search_latam_oneway(
     print(f"Search completed in {elapsed:.1f}s")
 
     if "error" in captured:
-        logger.warning("response error (status=%s): %s", captured.get('status'), captured['error'])
+        logger.warning(
+            "response error (status=%s): %s", captured.get("status"), captured["error"]
+        )
         return None
 
     return captured.get("data")
@@ -168,7 +182,7 @@ def search_latam_roundtrip(
     origin: str,
     destination: str,
     outbound: str,  # YYYY-MM-DD
-    inbound: str,   # YYYY-MM-DD
+    inbound: str,  # YYYY-MM-DD
     headless: bool = False,
 ) -> tuple[dict | None, dict | None]:
     """
@@ -181,7 +195,9 @@ def search_latam_roundtrip(
     """
     breaker = get_breaker()
     if not breaker.allow_request():
-        logger.warning("Circuit breaker OPEN — skipping LATAM search %s→%s", origin, destination)
+        logger.warning(
+            "Circuit breaker OPEN — skipping LATAM search %s→%s", origin, destination
+        )
         return None, None
 
     start = time.time()
@@ -194,7 +210,11 @@ def search_latam_roundtrip(
         if "bff/air-offers/v2/offers/search" in response.url:
             try:
                 data = response.json()
-                if response.status == 200 and isinstance(data, dict) and "content" in data:
+                if (
+                    response.status == 200
+                    and isinstance(data, dict)
+                    and "content" in data
+                ):
                     bff_responses.append(data)
                     print(f"  [BFF] captured {len(data.get('content', []))} offers")
             except Exception as e:
@@ -210,7 +230,9 @@ def search_latam_roundtrip(
         # Step 1: Load RT search page and capture outbound BFF
         try:
             with page.expect_response(
-                lambda r: "bff/air-offers/v2/offers/search" in r.url and r.status == 200,
+                lambda r: (
+                    "bff/air-offers/v2/offers/search" in r.url and r.status == 200
+                ),
                 timeout=30_000,
             ):
                 page.goto(url, wait_until="domcontentloaded")
@@ -245,7 +267,9 @@ def search_latam_roundtrip(
         # already present on page load; clicking wrapper-card-flight-0 first blocks
         # the Economy button from being actionable)
         try:
-            page.locator('[data-testid="cabin-grouping-tabs-0"] button').first.click(timeout=10_000)
+            page.locator('[data-testid="cabin-grouping-tabs-0"] button').first.click(
+                timeout=10_000
+            )
             page.wait_for_timeout(1000)
         except Exception as exc:
             category = classify_error(exc)
@@ -261,8 +285,12 @@ def search_latam_roundtrip(
 
         # Step 4: Select the Light fare
         try:
-            page.locator('[data-testid="bundle-detail-0-flight-select"]').wait_for(state="visible", timeout=30_000)
-            page.locator('[data-testid="bundle-detail-0-flight-select"]').click(timeout=10_000)
+            page.locator('[data-testid="bundle-detail-0-flight-select"]').wait_for(
+                state="visible", timeout=30_000
+            )
+            page.locator('[data-testid="bundle-detail-0-flight-select"]').click(
+                timeout=10_000
+            )
             page.wait_for_timeout(1000)
         except Exception as exc:
             category = classify_error(exc)
@@ -280,7 +308,9 @@ def search_latam_roundtrip(
         try:
             continuar = page.get_by_role("button", name="Continuar")
             with page.expect_response(
-                lambda r: "bff/air-offers/v2/offers/search" in r.url and r.status == 200,
+                lambda r: (
+                    "bff/air-offers/v2/offers/search" in r.url and r.status == 200
+                ),
                 timeout=90_000,
             ):
                 continuar.click(timeout=10_000)
@@ -325,13 +355,15 @@ def parse_offers(data: dict) -> list[dict]:
             "brands": [],
         }
         for brand in summary.get("brands", []):
-            offer["brands"].append({
-                "id": brand.get("id"),
-                "name": brand.get("brandText"),
-                "price": brand.get("price", {}).get("amount"),
-                "currency": brand.get("price", {}).get("currency"),
-                "fare_basis": brand.get("farebasis"),
-            })
+            offer["brands"].append(
+                {
+                    "id": brand.get("id"),
+                    "name": brand.get("brandText"),
+                    "price": brand.get("price", {}).get("amount"),
+                    "currency": brand.get("price", {}).get("currency"),
+                    "fare_basis": brand.get("farebasis"),
+                }
+            )
         offers.append(offer)
     return offers
 
@@ -342,7 +374,9 @@ def print_offers(offers: list[dict]) -> None:
         brands_str = " | ".join(
             f"{b['name']}: {b['currency']} {b['price']:.2f}"
             for b in offer["brands"]
-            if b["price"] is not None and b["name"] is not None and b["currency"] is not None
+            if b["price"] is not None
+            and b["name"] is not None
+            and b["currency"] is not None
         )
         stops_str = "direct" if offer["stops"] == 0 else f"{offer['stops']} stop(s)"
         print(
@@ -386,13 +420,13 @@ if __name__ == "__main__":
         # Feasibility assessment
         print("\n--- Feasibility Result ---")
         print(f"Total offers: {len(offers)}")
-        has_brands = any(len(o['brands']) > 0 for o in offers)
+        has_brands = any(len(o["brands"]) > 0 for o in offers)
         print(f"Has fare classes (brands): {has_brands}")
         if has_brands:
             brand_ids = set()
             for o in offers:
-                for b in o['brands']:
-                    brand_ids.add(b['id'])
+                for b in o["brands"]:
+                    brand_ids.add(b["id"])
             print(f"Brand IDs found: {sorted(brand_ids)}")
             print("STATUS: GREEN - Feasibility confirmed")
         else:

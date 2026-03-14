@@ -14,15 +14,24 @@ def test_classify_403_as_blocked():
 
 
 def test_classify_timeout_as_network_error():
-    assert classify_error(Exception("Timeout 30000ms exceeded")) == ErrorCategory.NETWORK_ERROR
+    assert (
+        classify_error(Exception("Timeout 30000ms exceeded"))
+        == ErrorCategory.NETWORK_ERROR
+    )
 
 
 def test_classify_element_not_found_as_page_error():
-    assert classify_error(Exception("element not found in page")) == ErrorCategory.PAGE_ERROR
+    assert (
+        classify_error(Exception("element not found in page"))
+        == ErrorCategory.PAGE_ERROR
+    )
 
 
 def test_classify_unknown_as_network_error():
-    assert classify_error(Exception("something weird happened")) == ErrorCategory.NETWORK_ERROR
+    assert (
+        classify_error(Exception("something weird happened"))
+        == ErrorCategory.NETWORK_ERROR
+    )
 
 
 def test_retry_strategy_rate_limited_has_long_backoff():

@@ -13,6 +13,7 @@ class TestHealthServer(unittest.TestCase):
     def setUp(self):
         import flight_watcher.health_server as mod
         import flight_watcher.scanner_state as state_mod
+
         mod._server = None
         mod._server_thread = None
         state_mod._state = None
@@ -20,6 +21,7 @@ class TestHealthServer(unittest.TestCase):
     def tearDown(self):
         import flight_watcher.health_server as mod
         import flight_watcher.scanner_state as state_mod
+
         if mod._server is not None:
             mod._server.shutdown()
             mod._server = None
@@ -28,6 +30,7 @@ class TestHealthServer(unittest.TestCase):
 
     def _find_free_port(self):
         import socket
+
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind(("", 0))
             return s.getsockname()[1]
@@ -37,9 +40,17 @@ class TestHealthServer(unittest.TestCase):
         with patch.dict("os.environ", {"HEALTH_PORT": str(port)}):
             with patch(f"{HEALTH_MODULE}.get_breaker") as mock_breaker:
                 mock_breaker.return_value = MagicMock(
-                    status_info=lambda: {"state": "closed", "consecutive_failures": 0, "backoff_remaining_sec": None},
+                    status_info=lambda: {
+                        "state": "closed",
+                        "consecutive_failures": 0,
+                        "backoff_remaining_sec": None,
+                    },
                 )
-                from flight_watcher.health_server import start_health_server, stop_health_server
+                from flight_watcher.health_server import (
+                    start_health_server,
+                    stop_health_server,
+                )
+
                 start_health_server()
                 try:
                     response = urllib.request.urlopen(f"http://localhost:{port}/health")
@@ -54,14 +65,26 @@ class TestHealthServer(unittest.TestCase):
     def test_returns_503_when_shutting_down(self):
         port = self._find_free_port()
         with patch.dict("os.environ", {"HEALTH_PORT": str(port)}):
-            with patch(f"{HEALTH_MODULE}.get_breaker") as mock_breaker, \
-                 patch(f"{HEALTH_MODULE}.get_scanner_state") as mock_state:
+            with (
+                patch(f"{HEALTH_MODULE}.get_breaker") as mock_breaker,
+                patch(f"{HEALTH_MODULE}.get_scanner_state") as mock_state,
+            ):
                 mock_state.return_value.status = ScannerStatus.SHUTTING_DOWN
-                mock_state.return_value.started_at = MagicMock(isoformat=lambda: "2026-01-01T00:00:00+00:00")
-                mock_breaker.return_value = MagicMock(
-                    status_info=lambda: {"state": "closed", "consecutive_failures": 0, "backoff_remaining_sec": None},
+                mock_state.return_value.started_at = MagicMock(
+                    isoformat=lambda: "2026-01-01T00:00:00+00:00"
                 )
-                from flight_watcher.health_server import start_health_server, stop_health_server
+                mock_breaker.return_value = MagicMock(
+                    status_info=lambda: {
+                        "state": "closed",
+                        "consecutive_failures": 0,
+                        "backoff_remaining_sec": None,
+                    },
+                )
+                from flight_watcher.health_server import (
+                    start_health_server,
+                    stop_health_server,
+                )
+
                 start_health_server()
                 try:
                     try:
@@ -75,7 +98,11 @@ class TestHealthServer(unittest.TestCase):
     def test_non_health_path_returns_404(self):
         port = self._find_free_port()
         with patch.dict("os.environ", {"HEALTH_PORT": str(port)}):
-            from flight_watcher.health_server import start_health_server, stop_health_server
+            from flight_watcher.health_server import (
+                start_health_server,
+                stop_health_server,
+            )
+
             start_health_server()
             try:
                 try:
@@ -89,8 +116,12 @@ class TestHealthServer(unittest.TestCase):
     def test_stop_health_server_shuts_down_cleanly(self):
         port = self._find_free_port()
         with patch.dict("os.environ", {"HEALTH_PORT": str(port)}):
-            from flight_watcher.health_server import start_health_server, stop_health_server
+            from flight_watcher.health_server import (
+                start_health_server,
+                stop_health_server,
+            )
             import flight_watcher.health_server as mod
+
             start_health_server()
             self.assertIsNotNone(mod._server)
             stop_health_server()

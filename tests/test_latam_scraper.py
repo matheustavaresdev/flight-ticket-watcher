@@ -21,7 +21,9 @@ _FIXED_PROFILE = BrowserProfile(
 )
 
 
-def _make_bff_response(origin: str, destination: str, brand_price: float = 1000.0) -> dict:
+def _make_bff_response(
+    origin: str, destination: str, brand_price: float = 1000.0
+) -> dict:
     """Build a minimal BFF response matching the LATAM API structure."""
     return {
         "content": [
@@ -66,7 +68,9 @@ def _setup_roundtrip_mocks(mock_pw, outbound_resp, return_resp=None):
     mock_browser.new_context.return_value = mock_context
     mock_context.new_page.return_value = mock_page
     mock_context.close = MagicMock()
-    mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = mock_browser
+    mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = (
+        mock_browser
+    )
 
     # Capture the on_response callback so we can simulate BFF responses
     captured_cb = {}
@@ -87,7 +91,9 @@ def _setup_roundtrip_mocks(mock_pw, outbound_resp, return_resp=None):
         # Simulate the outbound BFF response arriving
         if outbound_resp is not None:
             mock_resp = MagicMock()
-            mock_resp.url = "https://www.latamairlines.com/bff/air-offers/v2/offers/search?foo=bar"
+            mock_resp.url = (
+                "https://www.latamairlines.com/bff/air-offers/v2/offers/search?foo=bar"
+            )
             mock_resp.status = 200
             mock_resp.json.return_value = outbound_resp
             captured_cb["response"](mock_resp)
@@ -150,7 +156,9 @@ def test_roundtrip_captures_both_legs(mock_pw, mock_profile):
     outbound_resp = _make_bff_response("FOR", "GRU", brand_price=1000.0)
     return_resp = _make_bff_response("GRU", "FOR", brand_price=1200.0)
 
-    mock_page, _, mock_context = _setup_roundtrip_mocks(mock_pw, outbound_resp, return_resp)
+    mock_page, _, mock_context = _setup_roundtrip_mocks(
+        mock_pw, outbound_resp, return_resp
+    )
 
     outbound, ret = search_latam_roundtrip("FOR", "GRU", "2026-04-12", "2026-04-17")
 
@@ -179,7 +187,9 @@ def test_roundtrip_returns_none_when_outbound_times_out(mock_pw, mock_profile):
     mock_browser.new_context.return_value = mock_context
     mock_context.new_page.return_value = mock_page
     mock_context.close = MagicMock()
-    mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = mock_browser
+    mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = (
+        mock_browser
+    )
     mock_page.on = MagicMock()
 
     # Make expect_response raise (simulating timeout)
@@ -257,7 +267,9 @@ def test_search_latam_oneway_captures_single_bff(mock_pw, mock_profile):
     mock_browser.new_context.return_value = mock_context
     mock_context.new_page.return_value = mock_page
     mock_context.close = MagicMock()
-    mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = mock_browser
+    mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = (
+        mock_browser
+    )
 
     captured_cb = {}
 
@@ -294,7 +306,9 @@ def test_search_latam_oneway_captures_single_bff(mock_pw, mock_profile):
 @patch(f"{SEARCH_MODULE}.get_breaker")
 @patch(f"{SEARCH_MODULE}.get_random_profile", return_value=_FIXED_PROFILE)
 @patch(f"{SEARCH_MODULE}.sync_playwright")
-def test_roundtrip_records_failure_at_most_once_per_search(mock_pw, mock_profile, mock_get_breaker):
+def test_roundtrip_records_failure_at_most_once_per_search(
+    mock_pw, mock_profile, mock_get_breaker
+):
     """_failure_recorded flag prevents record_failure from being called more than once
     even if multiple exception handlers fire in a single search_latam_roundtrip call."""
     mock_breaker = MagicMock()
@@ -307,7 +321,9 @@ def test_roundtrip_records_failure_at_most_once_per_search(mock_pw, mock_profile
     mock_browser.new_context.return_value = mock_context
     mock_context.new_page.return_value = mock_page
     mock_context.close = MagicMock()
-    mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = mock_browser
+    mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = (
+        mock_browser
+    )
     mock_page.on = MagicMock()
 
     # Make the outbound expect_response context manager raise on __exit__
@@ -335,7 +351,9 @@ def test_search_latam_closes_context(mock_pw, mock_profile):
     mock_browser.new_context.return_value = mock_context
     mock_context.new_page.return_value = mock_page
     mock_context.close = MagicMock()
-    mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = mock_browser
+    mock_pw.return_value.__enter__.return_value.chromium.launch.return_value = (
+        mock_browser
+    )
 
     captured_cb = {}
 
