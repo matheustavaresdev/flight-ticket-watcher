@@ -9,7 +9,7 @@ app = typer.Typer(help="Flight ticket price monitoring CLI", no_args_is_help=Tru
 
 def _configure_logging(verbose: bool, quiet: bool) -> None:
     level = logging.WARNING if quiet else (logging.DEBUG if verbose else logging.INFO)
-    logging.basicConfig(level=level, format="%(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(level=level, format="%(levelname)s %(name)s: %(message)s", force=True)
 
 
 @app.callback()

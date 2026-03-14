@@ -27,10 +27,19 @@ def health_check() -> None:
     cb_failures = breaker_info["consecutive_failures"]
     cb_remaining = breaker_info.get("backoff_remaining_sec")
 
+    # Scheduler
+    from flight_watcher.scheduler import _scheduler as _sched
+
+    if _sched is not None and _sched.running:
+        sched_status = "Running"
+    else:
+        sched_status = "Not running (daemon mode only)"
+
     typer.echo(f"DB connection:    {db_status}")
     typer.echo(f"Circuit breaker:  {cb_state} (failures={cb_failures})")
     if cb_remaining is not None:
         typer.echo(f"  backoff remaining: {cb_remaining:.0f}s")
+    typer.echo(f"Scheduler:        {sched_status}")
 
     if issues:
         typer.echo(f"[WARN] {len(issues)} issue(s) detected")

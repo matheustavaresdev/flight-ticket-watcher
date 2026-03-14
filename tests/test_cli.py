@@ -233,3 +233,83 @@ class TestConfigToggle:
         assert result.exit_code != 0
         assert "999" in result.output
         assert "not found" in result.output.lower()
+
+
+class TestVerboseFlag:
+    def test_verbose_flag_sets_debug(self):
+        runner = CliRunner()
+        get_session_mock, session_mock = make_session_mock()
+        session_mock.execute.return_value.scalars.return_value.all.return_value = []
+
+        with patch("flight_watcher.cli.config.get_session", get_session_mock):
+            result = runner.invoke(app, ["--verbose", "config", "list"])
+
+        assert result.exit_code == 0, result.output
+
+
+class TestHealthCommand:
+    def test_health_shows_status(self):
+        runner = CliRunner()
+        get_session_mock, _ = make_session_mock()
+
+        breaker_mock = MagicMock()
+        breaker_mock.status_info.return_value = {
+            "state": "closed",
+            "consecutive_failures": 0,
+        }
+
+        with (
+            patch("flight_watcher.db.get_session", get_session_mock),
+            patch("flight_watcher.circuit_breaker.get_breaker", return_value=breaker_mock),
+        ):
+            result = runner.invoke(app, ["health"])
+
+        assert "[OK]" in result.output, result.output
+
+
+class TestRunsCommand:
+    def test_runs_list_shows_recent(self):
+        runner = CliRunner()
+        get_session_mock, session_mock = make_session_mock()
+        session_mock.execute.return_value.scalars.return_value.all.return_value = []
+
+        with patch("flight_watcher.cli.runs.get_session", get_session_mock):
+            result = runner.invoke(app, ["runs", "list"])
+
+        assert result.exit_code == 0, result.output
+
+
+class TestSearchCommands:
+    def test_search_latam_invokes_scraper(self):
+        runner = CliRunner()
+        mock_data = MagicMock()
+        mock_offers = [MagicMock()]
+
+        with (
+            patch("flight_watcher.latam_scraper.search_latam_oneway", return_value=mock_data) as mock_search,
+            patch("flight_watcher.latam_scraper.parse_offers", return_value=mock_offers),
+            patch("flight_watcher.latam_scraper.print_offers"),
+        ):
+            result = runner.invoke(
+                app,
+                ["search", "latam", "--origin", "GRU", "--dest", "FOR", "--out", "2026-04-12"],
+            )
+
+        assert result.exit_code == 0, result.output
+        mock_search.assert_called_once()
+
+    def test_search_fast_invokes_scanner(self):
+        runner = CliRunner()
+        mock_results = [MagicMock()]
+
+        with (
+            patch("flight_watcher.scanner.search_one_way", return_value=mock_results) as mock_search,
+            patch("flight_watcher.display.print_results"),
+        ):
+            result = runner.invoke(
+                app,
+                ["search", "fast", "--origin", "GRU", "--dest", "FOR", "--date", "2026-04-12"],
+            )
+
+        assert result.exit_code == 0, result.output
+        mock_search.assert_called_once()
