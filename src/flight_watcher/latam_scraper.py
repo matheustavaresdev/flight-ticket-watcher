@@ -10,7 +10,8 @@ from patchright.sync_api import sync_playwright
 
 from flight_watcher.browser_profiles import get_random_profile
 from flight_watcher.circuit_breaker import get_breaker
-from flight_watcher.errors import classify_error
+from flight_watcher.errors import ErrorCategory, classify_error
+from flight_watcher.models import SearchResult
 
 logger = logging.getLogger(__name__)
 
@@ -58,14 +59,14 @@ def search_latam(
     outbound: str,  # YYYY-MM-DD
     inbound: str,  # YYYY-MM-DD
     headless: bool = False,
-) -> dict | None:
+) -> "SearchResult[dict]":
     """
     Search LATAM flights by navigating to the search results page
     and intercepting the BFF API response.
 
     Returns the parsed JSON response or None if capture failed.
     """
-    start = time.time()
+    start = time.monotonic()
     captured = {}
 
     def on_response(response):
@@ -102,20 +103,41 @@ def search_latam(
                 logger.warning(
                     "latam search failed (category=%s): %s", category.value, exc
                 )
+                elapsed = time.monotonic() - start
+                logger.info("Search completed in %.1fs", elapsed)
+                return SearchResult.failure(
+                    str(exc),
+                    error_category=category,
+                    hint="check scraper logs",
+                    duration_sec=elapsed,
+                )
         finally:
             context.close()
-        browser.close()
+            browser.close()
 
-    elapsed = time.time() - start
+    elapsed = time.monotonic() - start
     logger.info("Search completed in %.1fs", elapsed)
 
     if "error" in captured:
         logger.warning(
             "response error (status=%s): %s", captured.get("status"), captured["error"]
         )
-        return None
+        return SearchResult.failure(
+            captured["error"],
+            error_category=ErrorCategory.PAGE_ERROR,
+            hint="BFF response parse error",
+            duration_sec=elapsed,
+        )
 
-    return captured.get("data")
+    data = captured.get("data")
+    if data is None:
+        return SearchResult.failure(
+            "no data captured",
+            error_category=ErrorCategory.PAGE_ERROR,
+            hint="BFF response not captured",
+            duration_sec=elapsed,
+        )
+    return SearchResult.success(data, duration_sec=elapsed)
 
 
 def search_latam_oneway(
@@ -123,13 +145,13 @@ def search_latam_oneway(
     destination: str,
     outbound: str,  # YYYY-MM-DD
     headless: bool = False,
-) -> dict | None:
+) -> "SearchResult[dict]":
     """
     Search one-way LATAM flights using trip=OW URL.
 
     Returns the parsed BFF JSON response or None if capture failed.
     """
-    start = time.time()
+    start = time.monotonic()
     captured = {}
 
     def on_response(response):
@@ -163,20 +185,41 @@ def search_latam_oneway(
                 logger.warning(
                     "latam search failed (category=%s): %s", category.value, exc
                 )
+                elapsed = time.monotonic() - start
+                logger.info("Search completed in %.1fs", elapsed)
+                return SearchResult.failure(
+                    str(exc),
+                    error_category=category,
+                    hint="check scraper logs",
+                    duration_sec=elapsed,
+                )
         finally:
             context.close()
-        browser.close()
+            browser.close()
 
-    elapsed = time.time() - start
+    elapsed = time.monotonic() - start
     logger.info("Search completed in %.1fs", elapsed)
 
     if "error" in captured:
         logger.warning(
             "response error (status=%s): %s", captured.get("status"), captured["error"]
         )
-        return None
+        return SearchResult.failure(
+            captured["error"],
+            error_category=ErrorCategory.PAGE_ERROR,
+            hint="BFF response parse error",
+            duration_sec=elapsed,
+        )
 
-    return captured.get("data")
+    data = captured.get("data")
+    if data is None:
+        return SearchResult.failure(
+            "no data captured",
+            error_category=ErrorCategory.PAGE_ERROR,
+            hint="BFF response not captured",
+            duration_sec=elapsed,
+        )
+    return SearchResult.success(data, duration_sec=elapsed)
 
 
 def search_latam_roundtrip(
@@ -185,23 +228,36 @@ def search_latam_roundtrip(
     outbound: str,  # YYYY-MM-DD
     inbound: str,  # YYYY-MM-DD
     headless: bool = False,
-) -> tuple[dict | None, dict | None]:
+) -> "tuple[SearchResult[dict], SearchResult[dict]]":
     """
     Search LATAM round-trip flights in a single browser session.
 
     Mirrors the real user flow: load RT search page, capture outbound BFF,
     select a flight + fare, then capture the return BFF.
 
-    Returns (outbound_data, return_data). Either may be None if not captured.
+    Returns (outbound_result, return_result). Either may be a failure SearchResult.
     """
     breaker = get_breaker()
+    start = time.monotonic()
     if not breaker.allow_request():
         logger.warning(
             "Circuit breaker OPEN — skipping LATAM search %s→%s", origin, destination
         )
-        return None, None
-
-    start = time.time()
+        elapsed = time.monotonic() - start
+        return (
+            SearchResult.failure(
+                "circuit breaker open",
+                error_category=ErrorCategory.BLOCKED,
+                hint="wait for breaker reset",
+                duration_sec=elapsed,
+            ),
+            SearchResult.failure(
+                "circuit breaker open",
+                error_category=ErrorCategory.BLOCKED,
+                hint="wait for breaker reset",
+                duration_sec=elapsed,
+            ),
+        )
     outbound_data = None
     return_data = None
     bff_responses: list[dict] = []
@@ -245,9 +301,22 @@ def search_latam_roundtrip(
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
             context.close()
             browser.close()
-            elapsed = time.time() - start
+            elapsed = time.monotonic() - start
             logger.debug("Search completed in %.1fs", elapsed)
-            return None, None
+            return (
+                SearchResult.failure(
+                    str(exc),
+                    error_category=category,
+                    hint="outbound search failed",
+                    duration_sec=elapsed,
+                ),
+                SearchResult.failure(
+                    "outbound failed",
+                    error_category=ErrorCategory.PAGE_ERROR,
+                    hint="outbound search failed",
+                    duration_sec=elapsed,
+                ),
+            )
 
         if bff_responses:
             outbound_data = bff_responses[0]
@@ -280,9 +349,27 @@ def search_latam_roundtrip(
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
             context.close()
             browser.close()
-            elapsed = time.time() - start
+            elapsed = time.monotonic() - start
             logger.debug("Search completed in %.1fs", elapsed)
-            return outbound_data, None
+            outbound_result = (
+                SearchResult.success(outbound_data, duration_sec=elapsed)
+                if outbound_data is not None
+                else SearchResult.failure(
+                    "no outbound data",
+                    error_category=ErrorCategory.PAGE_ERROR,
+                    hint="outbound data was None",
+                    duration_sec=elapsed,
+                )
+            )
+            return (
+                outbound_result,
+                SearchResult.failure(
+                    str(exc),
+                    error_category=category,
+                    hint="cabin selection failed",
+                    duration_sec=elapsed,
+                ),
+            )
 
         # Step 4: Select the Light fare
         try:
@@ -301,9 +388,27 @@ def search_latam_roundtrip(
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
             context.close()
             browser.close()
-            elapsed = time.time() - start
+            elapsed = time.monotonic() - start
             logger.debug("Search completed in %.1fs", elapsed)
-            return outbound_data, None
+            outbound_result = (
+                SearchResult.success(outbound_data, duration_sec=elapsed)
+                if outbound_data is not None
+                else SearchResult.failure(
+                    "no outbound data",
+                    error_category=ErrorCategory.PAGE_ERROR,
+                    hint="outbound data was None",
+                    duration_sec=elapsed,
+                )
+            )
+            return (
+                outbound_result,
+                SearchResult.failure(
+                    str(exc),
+                    error_category=category,
+                    hint="fare selection failed",
+                    duration_sec=elapsed,
+                ),
+            )
 
         # Step 5: Click "Continuar" and wait for return BFF
         try:
@@ -331,9 +436,29 @@ def search_latam_roundtrip(
         context.close()
         browser.close()
 
-    elapsed = time.time() - start
+    elapsed = time.monotonic() - start
     logger.info("Search completed in %.1fs", elapsed)
-    return outbound_data, return_data
+    outbound_result = (
+        SearchResult.success(outbound_data, duration_sec=elapsed)
+        if outbound_data is not None
+        else SearchResult.failure(
+            "no outbound data captured",
+            error_category=ErrorCategory.PAGE_ERROR,
+            hint="BFF response not captured",
+            duration_sec=elapsed,
+        )
+    )
+    return_result = (
+        SearchResult.success(return_data, duration_sec=elapsed)
+        if return_data is not None
+        else SearchResult.failure(
+            "no return data captured",
+            error_category=ErrorCategory.PAGE_ERROR,
+            hint="BFF response not captured",
+            duration_sec=elapsed,
+        )
+    )
+    return outbound_result, return_result
 
 
 def parse_offers(data: dict) -> list[dict]:

@@ -15,12 +15,20 @@ def search_latam(
     origin: str = typer.Option(..., "--origin", help="Origin IATA code."),
     dest: str = typer.Option(..., "--dest", help="Destination IATA code."),
     out: str = typer.Option(..., "--out", help="Outbound date (YYYY-MM-DD)."),
-    inbound: Optional[str] = typer.Option(None, "--in", help="Return date (YYYY-MM-DD). Omit for one-way."),
-    headless: bool = typer.Option(False, "--headless", help="Run browser in headless mode."),
+    inbound: Optional[str] = typer.Option(
+        None, "--in", help="Return date (YYYY-MM-DD). Omit for one-way."
+    ),
+    headless: bool = typer.Option(
+        False, "--headless", help="Run browser in headless mode."
+    ),
 ) -> None:
     """Search LATAM flights via browser interception."""
     from flight_watcher.display import print_offers
-    from flight_watcher.latam_scraper import parse_offers, search_latam_oneway, search_latam_roundtrip
+    from flight_watcher.latam_scraper import (
+        parse_offers,
+        search_latam_oneway,
+        search_latam_roundtrip,
+    )
 
     start = time.time()
     origin = parse_iata(origin)
@@ -30,26 +38,36 @@ def search_latam(
         inbound = str(parse_date(inbound))  # validate and normalize to YYYY-MM-DD
 
     if inbound:
-        outbound_data, return_data = search_latam_roundtrip(origin, dest, out, inbound, headless=headless)
+        outbound_result, return_result = search_latam_roundtrip(
+            origin, dest, out, inbound, headless=headless
+        )
         offers_count = 0
-        if outbound_data:
-            offers = parse_offers(outbound_data)
+        if outbound_result.ok and outbound_result.data:
+            offers = parse_offers(outbound_result.data)
             offers_count += len(offers)
             typer.echo(f"\nOutbound {origin} \u2192 {dest}:")
             print_offers(offers)
-        if return_data:
-            offers = parse_offers(return_data)
+        elif not outbound_result.ok:
+            typer.echo(
+                f"[WARN] Outbound search failed: {outbound_result.error}", err=True
+            )
+        if return_result.ok and return_result.data:
+            offers = parse_offers(return_result.data)
             offers_count += len(offers)
             typer.echo(f"\nReturn {dest} \u2192 {origin}:")
             print_offers(offers)
+        elif not return_result.ok:
+            typer.echo(f"[WARN] Return search failed: {return_result.error}", err=True)
     else:
-        data = search_latam_oneway(origin, dest, out, headless=headless)
-        if data:
-            offers = parse_offers(data)
+        result = search_latam_oneway(origin, dest, out, headless=headless)
+        if result.ok and result.data:
+            offers = parse_offers(result.data)
             offers_count = len(offers)
             print_offers(offers)
         else:
             offers_count = 0
+            if not result.ok:
+                typer.echo(f"[WARN] Search failed: {result.error}", err=True)
 
     elapsed = time.time() - start
     if offers_count > 0:
@@ -64,7 +82,9 @@ def search_fast(
     origin: str = typer.Option(..., "--origin", help="Origin IATA code."),
     dest: str = typer.Option(..., "--dest", help="Destination IATA code."),
     date: str = typer.Option(..., "--date", help="Departure date (YYYY-MM-DD)."),
-    return_date: Optional[str] = typer.Option(None, "--return-date", help="Return date (YYYY-MM-DD). Omit for one-way."),
+    return_date: Optional[str] = typer.Option(
+        None, "--return-date", help="Return date (YYYY-MM-DD). Omit for one-way."
+    ),
 ) -> None:
     """Search flights via fast-flights (Google Flights)."""
     from flight_watcher.display import print_results
@@ -78,13 +98,23 @@ def search_fast(
 
     if return_date:
         outbound, inbound = search_roundtrip(origin, dest, date, return_date)
-        print_results(outbound, header=f"Outbound {origin} \u2192 {dest} on {date}")
-        print_results(inbound, header=f"Return {dest} \u2192 {origin} on {return_date}")
-        total = len(outbound) + len(inbound)
+        print_results(
+            outbound.data or [], header=f"Outbound {origin} \u2192 {dest} on {date}"
+        )
+        print_results(
+            inbound.data or [], header=f"Return {dest} \u2192 {origin} on {return_date}"
+        )
+        total = len(outbound.data or []) + len(inbound.data or [])
+        if not outbound.ok:
+            typer.echo(f"[WARN] Outbound search failed: {outbound.error}", err=True)
+        if not inbound.ok:
+            typer.echo(f"[WARN] Return search failed: {inbound.error}", err=True)
     else:
-        results = search_one_way(origin, dest, date)
-        print_results(results)
-        total = len(results)
+        result = search_one_way(origin, dest, date)
+        print_results(result.data or [])
+        total = len(result.data or [])
+        if not result.ok:
+            typer.echo(f"[WARN] Search failed: {result.error}", err=True)
 
     if total > 0:
         typer.echo(f"[OK] {total} flights found")

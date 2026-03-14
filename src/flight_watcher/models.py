@@ -2,6 +2,9 @@ import enum
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Generic, TypeVar
+
+from flight_watcher.errors import ErrorCategory
 
 from sqlalchemy import (
     Boolean,
@@ -33,6 +36,39 @@ class FlightResult:
     departure_time: str  # HH:MM
     arrival_time: str  # HH:MM
     fetched_at: datetime
+
+
+T = TypeVar("T")
+
+
+@dataclass
+class SearchResult(Generic[T]):
+    ok: bool
+    data: T | None = None
+    error: str | None = None
+    error_category: "ErrorCategory | None" = None
+    hint: str | None = None
+    duration_sec: float = 0.0
+
+    @classmethod
+    def success(cls, data: T, duration_sec: float = 0.0) -> "SearchResult[T]":
+        return cls(ok=True, data=data, duration_sec=duration_sec)
+
+    @classmethod
+    def failure(
+        cls,
+        error: str,
+        error_category: "ErrorCategory | None" = None,
+        hint: str | None = None,
+        duration_sec: float = 0.0,
+    ) -> "SearchResult[T]":
+        return cls(
+            ok=False,
+            error=error,
+            error_category=error_category,
+            hint=hint,
+            duration_sec=duration_sec,
+        )
 
 
 class ScanStatus(enum.Enum):

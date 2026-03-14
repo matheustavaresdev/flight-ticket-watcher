@@ -162,10 +162,12 @@ def test_roundtrip_captures_both_legs(mock_pw, mock_profile):
 
     outbound, ret = search_latam_roundtrip("FOR", "GRU", "2026-04-12", "2026-04-17")
 
-    assert outbound is not None
-    assert outbound["content"][0]["summary"]["origin"]["iataCode"] == "FOR"
-    assert ret is not None
-    assert ret["content"][0]["summary"]["origin"]["iataCode"] == "GRU"
+    assert outbound.ok
+    assert outbound.data is not None
+    assert outbound.data["content"][0]["summary"]["origin"]["iataCode"] == "FOR"
+    assert ret.ok
+    assert ret.data is not None
+    assert ret.data["content"][0]["summary"]["origin"]["iataCode"] == "GRU"
 
     # Verify the interaction sequence (no card click — cabin button is clickable on load)
     mock_page.goto.assert_called_once()
@@ -200,8 +202,8 @@ def test_roundtrip_returns_none_when_outbound_times_out(mock_pw, mock_profile):
 
     outbound, ret = search_latam_roundtrip("FOR", "GRU", "2026-04-12", "2026-04-17")
 
-    assert outbound is None
-    assert ret is None
+    assert not outbound.ok
+    assert not ret.ok
     mock_context.close.assert_called_once()
     mock_browser.close.assert_called_once()
 
@@ -228,8 +230,9 @@ def test_roundtrip_returns_none_return_when_cabin_click_fails(mock_pw, mock_prof
 
     outbound, ret = search_latam_roundtrip("FOR", "GRU", "2026-04-12", "2026-04-17")
 
-    assert outbound is not None
-    assert ret is None
+    assert outbound.ok
+    assert outbound.data is not None
+    assert not ret.ok
     mock_context.close.assert_called_once()
 
 
@@ -294,8 +297,9 @@ def test_search_latam_oneway_captures_single_bff(mock_pw, mock_profile):
 
     result = search_latam_oneway("FOR", "MIA", "2026-03-12")
 
-    assert result is not None
-    assert result["content"][0]["summary"]["origin"]["iataCode"] == "FOR"
+    assert result.ok
+    assert result.data is not None
+    assert result.data["content"][0]["summary"]["origin"]["iataCode"] == "FOR"
     # Confirm the navigated URL has trip=OW
     goto_url = mock_page.goto.call_args[0][0]
     assert "trip=OW" in goto_url
@@ -378,8 +382,9 @@ def test_search_latam_closes_context(mock_pw, mock_profile):
 
     result = search_latam("FOR", "GRU", "2026-04-12", "2026-04-17")
 
-    assert result is not None
-    assert result["content"][0]["summary"]["origin"]["iataCode"] == "FOR"
+    assert result.ok
+    assert result.data is not None
+    assert result.data["content"][0]["summary"]["origin"]["iataCode"] == "FOR"
     mock_context.close.assert_called_once()
 
 

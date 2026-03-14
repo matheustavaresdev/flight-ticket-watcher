@@ -104,3 +104,40 @@ class TestEnums:
     def test_search_type_values(self):
         assert SearchType.ONEWAY.value == "oneway"
         assert SearchType.ROUNDTRIP.value == "roundtrip"
+
+
+class TestSearchResult:
+    def test_success_sets_ok_and_data(self):
+        from flight_watcher.models import SearchResult
+
+        result = SearchResult.success(["a", "b"])
+
+        assert result.ok is True
+        assert result.data == ["a", "b"]
+        assert result.error is None
+        assert result.error_category is None
+
+    def test_failure_sets_ok_false_and_error(self):
+        from flight_watcher.errors import ErrorCategory
+        from flight_watcher.models import SearchResult
+
+        result = SearchResult.failure(
+            "network timeout",
+            error_category=ErrorCategory.NETWORK_ERROR,
+            hint="retry later",
+        )
+
+        assert result.ok is False
+        assert result.data is None
+        assert result.error == "network timeout"
+        assert result.error_category == ErrorCategory.NETWORK_ERROR
+        assert result.hint == "retry later"
+
+    def test_duration_sec_propagated(self):
+        from flight_watcher.models import SearchResult
+
+        r1 = SearchResult.success([], duration_sec=1.23)
+        r2 = SearchResult.failure("err", duration_sec=4.56)
+
+        assert r1.duration_sec == 1.23
+        assert r2.duration_sec == 4.56
