@@ -34,6 +34,7 @@ def search_one_way(
             hint="wait for breaker reset",
             duration_sec=time.monotonic() - t0,
         )
+    last_exc: Exception | None = None
     for attempt in range(3):
         try:
             query = create_query(
@@ -49,6 +50,7 @@ def search_one_way(
             breaker.record_success()
             return SearchResult.success(results, duration_sec=time.monotonic() - t0)
         except Exception as exc:
+            last_exc = exc
             category = classify_error(exc)
             breaker.record_failure(category)
             if not breaker.allow_request():
@@ -105,7 +107,19 @@ def search_one_way(
                     duration_sec=time.monotonic() - t0,
                 )
     # Unreachable but satisfies type checker
-    return SearchResult.failure("unknown error", duration_sec=time.monotonic() - t0)
+    if last_exc is not None:
+        return SearchResult.failure(
+            str(last_exc),
+            error_category=classify_error(last_exc),
+            hint="retries exhausted",
+            duration_sec=time.monotonic() - t0,
+        )
+    return SearchResult.failure(
+        "unknown error",
+        error_category=ErrorCategory.PAGE_ERROR,
+        hint="retries exhausted",
+        duration_sec=time.monotonic() - t0,
+    )
 
 
 def search_roundtrip(

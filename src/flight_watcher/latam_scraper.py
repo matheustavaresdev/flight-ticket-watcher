@@ -66,7 +66,7 @@ def search_latam(
 
     Returns the parsed JSON response or None if capture failed.
     """
-    start = time.time()
+    start = time.monotonic()
     captured = {}
 
     def on_response(response):
@@ -103,11 +103,21 @@ def search_latam(
                 logger.warning(
                     "latam search failed (category=%s): %s", category.value, exc
                 )
+                context.close()
+                browser.close()
+                elapsed = time.monotonic() - start
+                logger.info("Search completed in %.1fs", elapsed)
+                return SearchResult.failure(
+                    str(exc),
+                    error_category=category,
+                    hint="check scraper logs",
+                    duration_sec=elapsed,
+                )
         finally:
             context.close()
         browser.close()
 
-    elapsed = time.time() - start
+    elapsed = time.monotonic() - start
     logger.info("Search completed in %.1fs", elapsed)
 
     if "error" in captured:
@@ -118,7 +128,12 @@ def search_latam(
 
     data = captured.get("data")
     if data is None:
-        return SearchResult.failure("no data captured", duration_sec=elapsed)
+        return SearchResult.failure(
+            "no data captured",
+            error_category=ErrorCategory.PAGE_ERROR,
+            hint="BFF response not captured",
+            duration_sec=elapsed,
+        )
     return SearchResult.success(data, duration_sec=elapsed)
 
 
@@ -133,7 +148,7 @@ def search_latam_oneway(
 
     Returns the parsed BFF JSON response or None if capture failed.
     """
-    start = time.time()
+    start = time.monotonic()
     captured = {}
 
     def on_response(response):
@@ -167,11 +182,21 @@ def search_latam_oneway(
                 logger.warning(
                     "latam search failed (category=%s): %s", category.value, exc
                 )
+                context.close()
+                browser.close()
+                elapsed = time.monotonic() - start
+                logger.info("Search completed in %.1fs", elapsed)
+                return SearchResult.failure(
+                    str(exc),
+                    error_category=category,
+                    hint="check scraper logs",
+                    duration_sec=elapsed,
+                )
         finally:
             context.close()
         browser.close()
 
-    elapsed = time.time() - start
+    elapsed = time.monotonic() - start
     logger.info("Search completed in %.1fs", elapsed)
 
     if "error" in captured:
@@ -182,7 +207,12 @@ def search_latam_oneway(
 
     data = captured.get("data")
     if data is None:
-        return SearchResult.failure("no data captured", duration_sec=elapsed)
+        return SearchResult.failure(
+            "no data captured",
+            error_category=ErrorCategory.PAGE_ERROR,
+            hint="BFF response not captured",
+            duration_sec=elapsed,
+        )
     return SearchResult.success(data, duration_sec=elapsed)
 
 
@@ -202,24 +232,26 @@ def search_latam_roundtrip(
     Returns (outbound_result, return_result). Either may be a failure SearchResult.
     """
     breaker = get_breaker()
+    start = time.monotonic()
     if not breaker.allow_request():
         logger.warning(
             "Circuit breaker OPEN — skipping LATAM search %s→%s", origin, destination
         )
+        elapsed = time.monotonic() - start
         return (
             SearchResult.failure(
                 "circuit breaker open",
                 error_category=ErrorCategory.BLOCKED,
                 hint="wait for breaker reset",
+                duration_sec=elapsed,
             ),
             SearchResult.failure(
                 "circuit breaker open",
                 error_category=ErrorCategory.BLOCKED,
                 hint="wait for breaker reset",
+                duration_sec=elapsed,
             ),
         )
-
-    start = time.time()
     outbound_data = None
     return_data = None
     bff_responses: list[dict] = []
@@ -263,7 +295,7 @@ def search_latam_roundtrip(
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
             context.close()
             browser.close()
-            elapsed = time.time() - start
+            elapsed = time.monotonic() - start
             logger.debug("Search completed in %.1fs", elapsed)
             return (
                 SearchResult.failure(
@@ -272,7 +304,12 @@ def search_latam_roundtrip(
                     hint="outbound search failed",
                     duration_sec=elapsed,
                 ),
-                SearchResult.failure("outbound failed", hint="outbound search failed"),
+                SearchResult.failure(
+                    "outbound failed",
+                    error_category=ErrorCategory.PAGE_ERROR,
+                    hint="outbound search failed",
+                    duration_sec=elapsed,
+                ),
             )
 
         if bff_responses:
@@ -306,12 +343,17 @@ def search_latam_roundtrip(
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
             context.close()
             browser.close()
-            elapsed = time.time() - start
+            elapsed = time.monotonic() - start
             logger.debug("Search completed in %.1fs", elapsed)
             outbound_result = (
                 SearchResult.success(outbound_data, duration_sec=elapsed)
                 if outbound_data is not None
-                else SearchResult.failure("no outbound data")
+                else SearchResult.failure(
+                    "no outbound data",
+                    error_category=ErrorCategory.PAGE_ERROR,
+                    hint="outbound data was None",
+                    duration_sec=elapsed,
+                )
             )
             return (
                 outbound_result,
@@ -340,12 +382,17 @@ def search_latam_roundtrip(
             logger.warning("latam search failed (category=%s): %s", category.value, exc)
             context.close()
             browser.close()
-            elapsed = time.time() - start
+            elapsed = time.monotonic() - start
             logger.debug("Search completed in %.1fs", elapsed)
             outbound_result = (
                 SearchResult.success(outbound_data, duration_sec=elapsed)
                 if outbound_data is not None
-                else SearchResult.failure("no outbound data")
+                else SearchResult.failure(
+                    "no outbound data",
+                    error_category=ErrorCategory.PAGE_ERROR,
+                    hint="outbound data was None",
+                    duration_sec=elapsed,
+                )
             )
             return (
                 outbound_result,
@@ -383,17 +430,27 @@ def search_latam_roundtrip(
         context.close()
         browser.close()
 
-    elapsed = time.time() - start
+    elapsed = time.monotonic() - start
     logger.info("Search completed in %.1fs", elapsed)
     outbound_result = (
         SearchResult.success(outbound_data, duration_sec=elapsed)
         if outbound_data is not None
-        else SearchResult.failure("no outbound data captured", duration_sec=elapsed)
+        else SearchResult.failure(
+            "no outbound data captured",
+            error_category=ErrorCategory.PAGE_ERROR,
+            hint="BFF response not captured",
+            duration_sec=elapsed,
+        )
     )
     return_result = (
         SearchResult.success(return_data, duration_sec=elapsed)
         if return_data is not None
-        else SearchResult.failure("no return data captured", duration_sec=elapsed)
+        else SearchResult.failure(
+            "no return data captured",
+            error_category=ErrorCategory.PAGE_ERROR,
+            hint="BFF response not captured",
+            duration_sec=elapsed,
+        )
     )
     return outbound_result, return_result
 
