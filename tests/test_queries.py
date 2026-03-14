@@ -275,6 +275,34 @@ class TestBestCombinations:
         totals = [r["total_price"] for r in results]
         assert totals == sorted(totals)
 
+    def test_excludes_currency_mismatch(self):
+        """Combinations where outbound and return currencies differ are excluded."""
+        config = _make_config(max_trip_days=14)
+        out_snap = _make_snapshot(
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 10),
+            price="800.00",
+            currency="BRL",
+        )
+        ret_snap = _make_snapshot(
+            origin="FOR",
+            destination="GRU",
+            flight_date=date(2024, 7, 20),
+            price="700.00",
+            currency="USD",
+        )
+
+        mock_session = self._make_session(config, [out_snap, ret_snap])
+
+        with patch(
+            "flight_watcher.queries.get_latest_snapshots",
+            return_value=[out_snap, ret_snap],
+        ):
+            results = best_combinations(mock_session, search_config_id=1)
+
+        assert results == []
+
     def test_includes_same_day_turnaround(self):
         """Same-day turnaround (trip_days == 0) should appear when max_trip_days >= 0."""
         config = _make_config(
