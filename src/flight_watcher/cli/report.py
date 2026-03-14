@@ -71,7 +71,7 @@ def show(
         # Section 2: Best by Stay Length
         typer.echo("── Best by Stay Length " + "─" * 37)
         b_arg = brand if brand else "ECONOMY"
-        combos = best_combinations(session, config_id, brand=b_arg)
+        combos = best_combinations(session, config_id, brand=b_arg, limit=None)
 
         header2 = f"  {'':2}  {'Days':>4}  {'Outbound':<12}  {'Return':<12}  {'Out Price':>12}  {'Ret Price':>12}  {'Total':>12}"
         typer.echo(header2)
@@ -106,8 +106,8 @@ def show(
                     savings_str = f"+{row['savings_pct']:.1f}%"
                 else:
                     savings_str = f"-{row['savings_pct']:.1f}%"
-                rt_p = _fmt_price(row["roundtrip_total"], "BRL")
-                ow_p = _fmt_price(row["oneway_total"], "BRL")
+                rt_p = _fmt_price(row["roundtrip_total"], row["currency"])
+                ow_p = _fmt_price(row["oneway_total"], row["currency"])
                 typer.echo(
                     f"  {str(row['outbound_date']):<12}  {str(row['return_date']):<12}  {rt_p:>12}  {ow_p:>12}  {savings_str:>8}  {row['recommendation']}{sig}"
                 )
