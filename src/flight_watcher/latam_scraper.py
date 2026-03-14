@@ -4,6 +4,7 @@ import json
 import logging
 import time
 from datetime import datetime
+from collections.abc import Callable
 from pathlib import Path
 
 from patchright.sync_api import sync_playwright
@@ -53,6 +54,22 @@ def _build_latam_url(
     return url
 
 
+def _make_bff_intercept(captured: dict) -> Callable:
+    """Return a response handler that captures BFF offer data into *captured*."""
+
+    def on_response(response):
+        if "bff/air-offers/v2/offers/search" in response.url:
+            try:
+                captured["data"] = response.json()
+                captured["status"] = response.status
+                captured.pop("error", None)
+            except Exception as e:
+                captured["error"] = str(e)
+                captured["status"] = response.status
+
+    return on_response
+
+
 def search_latam(
     origin: str,
     destination: str,
@@ -69,15 +86,7 @@ def search_latam(
     start = time.monotonic()
     captured = {}
 
-    def on_response(response):
-        if "bff/air-offers/v2/offers/search" in response.url:
-            try:
-                captured["data"] = response.json()
-                captured["status"] = response.status
-                captured.pop("error", None)
-            except Exception as e:
-                captured["error"] = str(e)
-                captured["status"] = response.status
+    on_response = _make_bff_intercept(captured)
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -154,15 +163,7 @@ def search_latam_oneway(
     start = time.monotonic()
     captured = {}
 
-    def on_response(response):
-        if "bff/air-offers/v2/offers/search" in response.url:
-            try:
-                captured["data"] = response.json()
-                captured["status"] = response.status
-                captured.pop("error", None)
-            except Exception as e:
-                captured["error"] = str(e)
-                captured["status"] = response.status
+    on_response = _make_bff_intercept(captured)
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless, channel="chrome")
@@ -280,161 +281,157 @@ def search_latam_roundtrip(
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless, channel="chrome")
         context, page = _create_context(browser)
-        page.on("response", on_response)
-
-        url = _build_latam_url(origin, destination, outbound, inbound)
-
-        # Step 1: Load RT search page and capture outbound BFF
         try:
-            with page.expect_response(
-                lambda r: (
-                    "bff/air-offers/v2/offers/search" in r.url and r.status == 200
-                ),
-                timeout=30_000,
-            ):
-                page.goto(url, wait_until="domcontentloaded")
-        except Exception as exc:
-            category = classify_error(exc)
-            if not _failure_recorded:
-                breaker.record_failure(category)
-                _failure_recorded = True
-            logger.warning("latam search failed (category=%s): %s", category.value, exc)
-            context.close()
-            browser.close()
-            elapsed = time.monotonic() - start
-            logger.debug("Search completed in %.1fs", elapsed)
-            return (
-                SearchResult.failure(
-                    str(exc),
-                    error_category=category,
-                    hint="outbound search failed",
-                    duration_sec=elapsed,
-                ),
-                SearchResult.failure(
-                    "outbound failed",
-                    error_category=ErrorCategory.PAGE_ERROR,
-                    hint="outbound search failed",
-                    duration_sec=elapsed,
-                ),
-            )
+            page.on("response", on_response)
 
-        if bff_responses:
-            outbound_data = bff_responses[0]
-            breaker.record_success()
-            logger.info("Outbound: %d offers", len(outbound_data.get("content", [])))
+            url = _build_latam_url(origin, destination, outbound, inbound)
 
-        # Step 2: Dismiss cookie consent if present
-        page.wait_for_timeout(2000)
-        cookie_btn = page.locator('[data-testid="cookies-politics-button--button"]')
-        if cookie_btn.count() > 0:
+            # Step 1: Load RT search page and capture outbound BFF
             try:
-                cookie_btn.click(timeout=5000)
+                with page.expect_response(
+                    lambda r: (
+                        "bff/air-offers/v2/offers/search" in r.url and r.status == 200
+                    ),
+                    timeout=30_000,
+                ):
+                    page.goto(url, wait_until="domcontentloaded")
+            except Exception as exc:
+                category = classify_error(exc)
+                if not _failure_recorded:
+                    breaker.record_failure(category)
+                    _failure_recorded = True
+                logger.warning("latam search failed (category=%s): %s", category.value, exc)
+                elapsed = time.monotonic() - start
+                logger.debug("Search completed in %.1fs", elapsed)
+                return (
+                    SearchResult.failure(
+                        str(exc),
+                        error_category=category,
+                        hint="outbound search failed",
+                        duration_sec=elapsed,
+                    ),
+                    SearchResult.failure(
+                        "outbound failed",
+                        error_category=ErrorCategory.PAGE_ERROR,
+                        hint="outbound search failed",
+                        duration_sec=elapsed,
+                    ),
+                )
+
+            if bff_responses:
+                outbound_data = bff_responses[0]
+                breaker.record_success()
+                logger.info("Outbound: %d offers", len(outbound_data.get("content", [])))
+
+            # Step 2: Dismiss cookie consent if present
+            page.wait_for_timeout(2000)
+            cookie_btn = page.locator('[data-testid="cookies-politics-button--button"]')
+            if cookie_btn.count() > 0:
+                try:
+                    cookie_btn.click(timeout=5000)
+                    page.wait_for_timeout(1000)
+                except Exception:
+                    pass
+
+            # Step 3: Expand Economy cabin section directly (cabin-grouping-tabs-0 is
+            # already present on page load; clicking wrapper-card-flight-0 first blocks
+            # the Economy button from being actionable)
+            try:
+                page.locator('[data-testid="cabin-grouping-tabs-0"] button').first.click(
+                    timeout=10_000
+                )
                 page.wait_for_timeout(1000)
-            except Exception:
-                pass
+            except Exception as exc:
+                category = classify_error(exc)
+                if not _failure_recorded:
+                    breaker.record_failure(category)
+                    _failure_recorded = True
+                logger.warning("latam search failed (category=%s): %s", category.value, exc)
+                elapsed = time.monotonic() - start
+                logger.debug("Search completed in %.1fs", elapsed)
+                outbound_result = (
+                    SearchResult.success(outbound_data, duration_sec=elapsed)
+                    if outbound_data is not None
+                    else SearchResult.failure(
+                        "no outbound data",
+                        error_category=ErrorCategory.PAGE_ERROR,
+                        hint="outbound data was None",
+                        duration_sec=elapsed,
+                    )
+                )
+                return (
+                    outbound_result,
+                    SearchResult.failure(
+                        str(exc),
+                        error_category=category,
+                        hint="cabin selection failed",
+                        duration_sec=elapsed,
+                    ),
+                )
 
-        # Step 3: Expand Economy cabin section directly (cabin-grouping-tabs-0 is
-        # already present on page load; clicking wrapper-card-flight-0 first blocks
-        # the Economy button from being actionable)
-        try:
-            page.locator('[data-testid="cabin-grouping-tabs-0"] button').first.click(
-                timeout=10_000
-            )
-            page.wait_for_timeout(1000)
-        except Exception as exc:
-            category = classify_error(exc)
-            if not _failure_recorded:
-                breaker.record_failure(category)
-                _failure_recorded = True
-            logger.warning("latam search failed (category=%s): %s", category.value, exc)
+            # Step 4: Select the Light fare
+            try:
+                page.locator('[data-testid="bundle-detail-0-flight-select"]').wait_for(
+                    state="visible", timeout=30_000
+                )
+                page.locator('[data-testid="bundle-detail-0-flight-select"]').click(
+                    timeout=10_000
+                )
+                page.wait_for_timeout(1000)
+            except Exception as exc:
+                category = classify_error(exc)
+                if not _failure_recorded:
+                    breaker.record_failure(category)
+                    _failure_recorded = True
+                logger.warning("latam search failed (category=%s): %s", category.value, exc)
+                elapsed = time.monotonic() - start
+                logger.debug("Search completed in %.1fs", elapsed)
+                outbound_result = (
+                    SearchResult.success(outbound_data, duration_sec=elapsed)
+                    if outbound_data is not None
+                    else SearchResult.failure(
+                        "no outbound data",
+                        error_category=ErrorCategory.PAGE_ERROR,
+                        hint="outbound data was None",
+                        duration_sec=elapsed,
+                    )
+                )
+                return (
+                    outbound_result,
+                    SearchResult.failure(
+                        str(exc),
+                        error_category=category,
+                        hint="fare selection failed",
+                        duration_sec=elapsed,
+                    ),
+                )
+
+            # Step 5: Click "Continuar" and wait for return BFF
+            try:
+                continuar = page.get_by_role("button", name="Continuar")
+                with page.expect_response(
+                    lambda r: (
+                        "bff/air-offers/v2/offers/search" in r.url and r.status == 200
+                    ),
+                    timeout=90_000,
+                ):
+                    continuar.click(timeout=10_000)
+                logger.debug("Return BFF response captured")
+            except Exception as exc:
+                category = classify_error(exc)
+                if not _failure_recorded:
+                    breaker.record_failure(category)
+                    _failure_recorded = True
+                logger.warning("latam search failed (category=%s): %s", category.value, exc)
+
+            # The last bff_responses entry should be the return leg
+            if len(bff_responses) >= 2:
+                return_data = bff_responses[-1]
+                logger.info("Return: %d offers", len(return_data.get("content", [])))
+
+        finally:
             context.close()
             browser.close()
-            elapsed = time.monotonic() - start
-            logger.debug("Search completed in %.1fs", elapsed)
-            outbound_result = (
-                SearchResult.success(outbound_data, duration_sec=elapsed)
-                if outbound_data is not None
-                else SearchResult.failure(
-                    "no outbound data",
-                    error_category=ErrorCategory.PAGE_ERROR,
-                    hint="outbound data was None",
-                    duration_sec=elapsed,
-                )
-            )
-            return (
-                outbound_result,
-                SearchResult.failure(
-                    str(exc),
-                    error_category=category,
-                    hint="cabin selection failed",
-                    duration_sec=elapsed,
-                ),
-            )
-
-        # Step 4: Select the Light fare
-        try:
-            page.locator('[data-testid="bundle-detail-0-flight-select"]').wait_for(
-                state="visible", timeout=30_000
-            )
-            page.locator('[data-testid="bundle-detail-0-flight-select"]').click(
-                timeout=10_000
-            )
-            page.wait_for_timeout(1000)
-        except Exception as exc:
-            category = classify_error(exc)
-            if not _failure_recorded:
-                breaker.record_failure(category)
-                _failure_recorded = True
-            logger.warning("latam search failed (category=%s): %s", category.value, exc)
-            context.close()
-            browser.close()
-            elapsed = time.monotonic() - start
-            logger.debug("Search completed in %.1fs", elapsed)
-            outbound_result = (
-                SearchResult.success(outbound_data, duration_sec=elapsed)
-                if outbound_data is not None
-                else SearchResult.failure(
-                    "no outbound data",
-                    error_category=ErrorCategory.PAGE_ERROR,
-                    hint="outbound data was None",
-                    duration_sec=elapsed,
-                )
-            )
-            return (
-                outbound_result,
-                SearchResult.failure(
-                    str(exc),
-                    error_category=category,
-                    hint="fare selection failed",
-                    duration_sec=elapsed,
-                ),
-            )
-
-        # Step 5: Click "Continuar" and wait for return BFF
-        try:
-            continuar = page.get_by_role("button", name="Continuar")
-            with page.expect_response(
-                lambda r: (
-                    "bff/air-offers/v2/offers/search" in r.url and r.status == 200
-                ),
-                timeout=90_000,
-            ):
-                continuar.click(timeout=10_000)
-            logger.debug("Return BFF response captured")
-        except Exception as exc:
-            category = classify_error(exc)
-            if not _failure_recorded:
-                breaker.record_failure(category)
-                _failure_recorded = True
-            logger.warning("latam search failed (category=%s): %s", category.value, exc)
-
-        # The last bff_responses entry should be the return leg
-        if len(bff_responses) >= 2:
-            return_data = bff_responses[-1]
-            logger.info("Return: %d offers", len(return_data.get("content", [])))
-
-        context.close()
-        browser.close()
 
     elapsed = time.monotonic() - start
     logger.info("Search completed in %.1fs", elapsed)
