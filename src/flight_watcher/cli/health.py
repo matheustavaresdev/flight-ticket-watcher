@@ -22,8 +22,11 @@ def health_check() -> None:
             data = json.loads(body)
     except urllib.error.HTTPError as exc:
         body = exc.read()
-        data = json.loads(body)
-        typer.echo(f"Daemon is {data.get('status', 'unhealthy')} [WARN]")
+        try:
+            data = json.loads(body)
+            typer.echo(f"Daemon is {data.get('status', 'unhealthy')} [WARN]")
+        except (json.JSONDecodeError, KeyError):
+            typer.echo(f"Daemon returned HTTP {exc.code} [FAIL]")
         raise typer.Exit(1)
     except urllib.error.URLError as exc:
         typer.echo(f"Daemon not reachable at {url}: {exc.reason}")
