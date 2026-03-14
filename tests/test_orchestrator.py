@@ -678,6 +678,7 @@ class TestFailureAwareCursorAdvancement(unittest.TestCase):
         with self.assertRaises(SearchFailedError):
             run_scan(config)
 
+        self.assertEqual(mock_search.call_count, 1)
         self.assertIn("scan_run", captured)
         self.assertEqual(captured["scan_run"].status, ScanStatus.FAILED)
         self.assertIsNone(captured["scan_run"].last_successful_date)
@@ -706,6 +707,7 @@ class TestFailureAwareCursorAdvancement(unittest.TestCase):
         with self.assertRaises(SearchFailedError):
             run_scan(config)
 
+        self.assertEqual(mock_search.call_count, 1)
         self.assertIn("scan_run", captured)
         self.assertEqual(captured["scan_run"].status, ScanStatus.FAILED)
         self.assertIsNone(captured["scan_run"].last_successful_date)
@@ -734,6 +736,7 @@ class TestFailureAwareCursorAdvancement(unittest.TestCase):
         with self.assertRaises(SearchFailedError):
             run_scan(config)
 
+        self.assertEqual(mock_search.call_count, 1)
         self.assertIn("scan_run", captured)
         self.assertEqual(captured["scan_run"].status, ScanStatus.FAILED)
         self.assertIsNone(captured["scan_run"].last_successful_date)
