@@ -28,6 +28,7 @@ def _get_health_data() -> tuple[dict, int]:
     next_scan = None
     try:
         import flight_watcher.scheduler as sched_mod  # deferred import to avoid circular dependency
+
         scheduler = sched_mod.get_scheduler()
         if scheduler is not None:
             jobs = scheduler.get_jobs()
@@ -41,6 +42,7 @@ def _get_health_data() -> tuple[dict, int]:
     last_successful_scans: dict = {}
     try:
         from flight_watcher.db import get_session
+
         with get_session() as session:
             rows = session.execute(
                 select(ScanRun.search_config_id, func.max(ScanRun.completed_at))
@@ -48,8 +50,7 @@ def _get_health_data() -> tuple[dict, int]:
                 .group_by(ScanRun.search_config_id)
             ).all()
             last_successful_scans = {
-                str(row[0]): row[1].isoformat() if row[1] else None
-                for row in rows
+                str(row[0]): row[1].isoformat() if row[1] else None for row in rows
             }
     except Exception as e:
         logger.warning("Failed to query last successful scans: %s", e)

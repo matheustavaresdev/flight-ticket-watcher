@@ -150,17 +150,24 @@ class TestBestCombinations:
             max_trip_days=14,
         )
         out_snap = _make_snapshot(
-            origin="GRU", destination="FOR",
-            flight_date=date(2024, 7, 10), price="800.00",
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 10),
+            price="800.00",
         )
         ret_snap = _make_snapshot(
-            origin="FOR", destination="GRU",
-            flight_date=date(2024, 7, 20), price="700.00",
+            origin="FOR",
+            destination="GRU",
+            flight_date=date(2024, 7, 20),
+            price="700.00",
         )
 
         mock_session = self._make_session(config, [out_snap, ret_snap])
 
-        with patch("flight_watcher.queries.get_latest_snapshots", return_value=[out_snap, ret_snap]):
+        with patch(
+            "flight_watcher.queries.get_latest_snapshots",
+            return_value=[out_snap, ret_snap],
+        ):
             results = best_combinations(mock_session, search_config_id=1)
 
         assert len(results) == 1
@@ -174,17 +181,24 @@ class TestBestCombinations:
         """Pairs where trip_days > max_trip_days are excluded."""
         config = _make_config(max_trip_days=7)
         out_snap = _make_snapshot(
-            origin="GRU", destination="FOR",
-            flight_date=date(2024, 7, 10), price="800.00",
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 10),
+            price="800.00",
         )
         ret_snap = _make_snapshot(
-            origin="FOR", destination="GRU",
-            flight_date=date(2024, 7, 20), price="700.00",
+            origin="FOR",
+            destination="GRU",
+            flight_date=date(2024, 7, 20),
+            price="700.00",
         )  # 10 days > max_trip_days=7
 
         mock_session = self._make_session(config, [out_snap, ret_snap])
 
-        with patch("flight_watcher.queries.get_latest_snapshots", return_value=[out_snap, ret_snap]):
+        with patch(
+            "flight_watcher.queries.get_latest_snapshots",
+            return_value=[out_snap, ret_snap],
+        ):
             results = best_combinations(mock_session, search_config_id=1)
 
         assert results == []
@@ -197,17 +211,23 @@ class TestBestCombinations:
         # Jul 11 → Jul 20 = 9 days (different trip_days, no conflict)
         # Add another Jul 10 → Jul 20 pair via different outbound price to test cheapest kept
         out_cheap = _make_snapshot(
-            origin="GRU", destination="FOR",
-            flight_date=date(2024, 7, 10), price="600.00",
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 10),
+            price="600.00",
         )
         out_expensive = _make_snapshot(
-            origin="GRU", destination="FOR",
-            flight_date=date(2024, 7, 10), price="900.00",
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 10),
+            price="900.00",
             fetched_at=datetime(2024, 7, 2, 12, 0, tzinfo=timezone.utc),
         )
         ret_snap = _make_snapshot(
-            origin="FOR", destination="GRU",
-            flight_date=date(2024, 7, 20), price="700.00",
+            origin="FOR",
+            destination="GRU",
+            flight_date=date(2024, 7, 20),
+            price="700.00",
         )
 
         mock_session = self._make_session(config, [out_cheap, out_expensive, ret_snap])
@@ -225,13 +245,31 @@ class TestBestCombinations:
     def test_sorted_by_total_price(self):
         """Results are sorted ascending by total_price."""
         config = _make_config(max_trip_days=30)
-        out1 = _make_snapshot(origin="GRU", destination="FOR", flight_date=date(2024, 7, 5), price="1000.00")
-        out2 = _make_snapshot(origin="GRU", destination="FOR", flight_date=date(2024, 7, 10), price="500.00")
-        ret = _make_snapshot(origin="FOR", destination="GRU", flight_date=date(2024, 7, 20), price="500.00")
+        out1 = _make_snapshot(
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 5),
+            price="1000.00",
+        )
+        out2 = _make_snapshot(
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 10),
+            price="500.00",
+        )
+        ret = _make_snapshot(
+            origin="FOR",
+            destination="GRU",
+            flight_date=date(2024, 7, 20),
+            price="500.00",
+        )
 
         mock_session = self._make_session(config, [out1, out2, ret])
 
-        with patch("flight_watcher.queries.get_latest_snapshots", return_value=[out1, out2, ret]):
+        with patch(
+            "flight_watcher.queries.get_latest_snapshots",
+            return_value=[out1, out2, ret],
+        ):
             results = best_combinations(mock_session, search_config_id=1)
 
         totals = [r["total_price"] for r in results]
@@ -247,12 +285,19 @@ class TestBestCombinations:
             max_trip_days=14,
         )
         same_date = date(2024, 7, 10)
-        out_snap = _make_snapshot(origin="GRU", destination="FOR", flight_date=same_date, price="800.00")
-        ret_snap = _make_snapshot(origin="FOR", destination="GRU", flight_date=same_date, price="700.00")
+        out_snap = _make_snapshot(
+            origin="GRU", destination="FOR", flight_date=same_date, price="800.00"
+        )
+        ret_snap = _make_snapshot(
+            origin="FOR", destination="GRU", flight_date=same_date, price="700.00"
+        )
 
         mock_session = self._make_session(config, [out_snap, ret_snap])
 
-        with patch("flight_watcher.queries.get_latest_snapshots", return_value=[out_snap, ret_snap]):
+        with patch(
+            "flight_watcher.queries.get_latest_snapshots",
+            return_value=[out_snap, ret_snap],
+        ):
             results = best_combinations(mock_session, search_config_id=1)
 
         assert len(results) == 1
@@ -290,29 +335,38 @@ class TestRoundtripVsOneway:
     def test_comparison_roundtrip_cheaper(self):
         """When roundtrip total < oneway total, recommendation is 'roundtrip'."""
         config = _make_config(
-            origin="GRU", destination="FOR",
+            origin="GRU",
+            destination="FOR",
             must_arrive_by=date(2024, 7, 31),
             must_stay_until=date(2024, 7, 1),
             max_trip_days=30,
         )
         rt_out = _make_snapshot(
-            origin="GRU", destination="FOR",
-            flight_date=date(2024, 7, 10), price="400.00",
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 10),
+            price="400.00",
             search_type=SearchType.ROUNDTRIP,
         )
         rt_ret = _make_snapshot(
-            origin="FOR", destination="GRU",
-            flight_date=date(2024, 7, 20), price="400.00",
+            origin="FOR",
+            destination="GRU",
+            flight_date=date(2024, 7, 20),
+            price="400.00",
             search_type=SearchType.ROUNDTRIP,
         )
         ow_out = _make_snapshot(
-            origin="GRU", destination="FOR",
-            flight_date=date(2024, 7, 10), price="600.00",
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 10),
+            price="600.00",
             search_type=SearchType.ONEWAY,
         )
         ow_ret = _make_snapshot(
-            origin="FOR", destination="GRU",
-            flight_date=date(2024, 7, 20), price="600.00",
+            origin="FOR",
+            destination="GRU",
+            flight_date=date(2024, 7, 20),
+            price="600.00",
             search_type=SearchType.ONEWAY,
         )
 
@@ -332,29 +386,38 @@ class TestRoundtripVsOneway:
     def test_comparison_oneway_cheaper(self):
         """When oneway total < roundtrip total, recommendation is '2x one-way'."""
         config = _make_config(
-            origin="GRU", destination="FOR",
+            origin="GRU",
+            destination="FOR",
             must_arrive_by=date(2024, 7, 31),
             must_stay_until=date(2024, 7, 1),
             max_trip_days=30,
         )
         rt_out = _make_snapshot(
-            origin="GRU", destination="FOR",
-            flight_date=date(2024, 7, 10), price="700.00",
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 10),
+            price="700.00",
             search_type=SearchType.ROUNDTRIP,
         )
         rt_ret = _make_snapshot(
-            origin="FOR", destination="GRU",
-            flight_date=date(2024, 7, 20), price="700.00",
+            origin="FOR",
+            destination="GRU",
+            flight_date=date(2024, 7, 20),
+            price="700.00",
             search_type=SearchType.ROUNDTRIP,
         )
         ow_out = _make_snapshot(
-            origin="GRU", destination="FOR",
-            flight_date=date(2024, 7, 10), price="500.00",
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 10),
+            price="500.00",
             search_type=SearchType.ONEWAY,
         )
         ow_ret = _make_snapshot(
-            origin="FOR", destination="GRU",
-            flight_date=date(2024, 7, 20), price="500.00",
+            origin="FOR",
+            destination="GRU",
+            flight_date=date(2024, 7, 20),
+            price="500.00",
             search_type=SearchType.ONEWAY,
         )
 
@@ -371,20 +434,48 @@ class TestRoundtripVsOneway:
     def test_savings_pct_calculation(self):
         """savings_pct is correctly calculated."""
         config = _make_config(
-            origin="GRU", destination="FOR",
+            origin="GRU",
+            destination="FOR",
             must_arrive_by=date(2024, 7, 31),
             must_stay_until=date(2024, 7, 1),
             max_trip_days=30,
         )
         # RT: 800, OW: 1000 → savings = 200/1000 = 20%
-        rt_out = _make_snapshot(origin="GRU", destination="FOR", flight_date=date(2024, 7, 10), price="400.00", search_type=SearchType.ROUNDTRIP)
-        rt_ret = _make_snapshot(origin="FOR", destination="GRU", flight_date=date(2024, 7, 20), price="400.00", search_type=SearchType.ROUNDTRIP)
-        ow_out = _make_snapshot(origin="GRU", destination="FOR", flight_date=date(2024, 7, 10), price="500.00", search_type=SearchType.ONEWAY)
-        ow_ret = _make_snapshot(origin="FOR", destination="GRU", flight_date=date(2024, 7, 20), price="500.00", search_type=SearchType.ONEWAY)
+        rt_out = _make_snapshot(
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 10),
+            price="400.00",
+            search_type=SearchType.ROUNDTRIP,
+        )
+        rt_ret = _make_snapshot(
+            origin="FOR",
+            destination="GRU",
+            flight_date=date(2024, 7, 20),
+            price="400.00",
+            search_type=SearchType.ROUNDTRIP,
+        )
+        ow_out = _make_snapshot(
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 10),
+            price="500.00",
+            search_type=SearchType.ONEWAY,
+        )
+        ow_ret = _make_snapshot(
+            origin="FOR",
+            destination="GRU",
+            flight_date=date(2024, 7, 20),
+            price="500.00",
+            search_type=SearchType.ONEWAY,
+        )
 
         mock_session = self._make_session(config)
 
-        with patch("flight_watcher.queries.get_latest_snapshots", return_value=[rt_out, rt_ret, ow_out, ow_ret]):
+        with patch(
+            "flight_watcher.queries.get_latest_snapshots",
+            return_value=[rt_out, rt_ret, ow_out, ow_ret],
+        ):
             results = roundtrip_vs_oneway(mock_session, search_config_id=1)
 
         assert len(results) == 1
@@ -393,20 +484,48 @@ class TestRoundtripVsOneway:
     def test_significant_flag_threshold(self):
         """significant is True when savings_pct > 5%, False otherwise."""
         config = _make_config(
-            origin="GRU", destination="FOR",
+            origin="GRU",
+            destination="FOR",
             must_arrive_by=date(2024, 7, 31),
             must_stay_until=date(2024, 7, 1),
             max_trip_days=30,
         )
         # RT: 990, OW: 1000 → savings = 10/1000 = 1% → NOT significant
-        rt_out = _make_snapshot(origin="GRU", destination="FOR", flight_date=date(2024, 7, 10), price="495.00", search_type=SearchType.ROUNDTRIP)
-        rt_ret = _make_snapshot(origin="FOR", destination="GRU", flight_date=date(2024, 7, 20), price="495.00", search_type=SearchType.ROUNDTRIP)
-        ow_out = _make_snapshot(origin="GRU", destination="FOR", flight_date=date(2024, 7, 10), price="500.00", search_type=SearchType.ONEWAY)
-        ow_ret = _make_snapshot(origin="FOR", destination="GRU", flight_date=date(2024, 7, 20), price="500.00", search_type=SearchType.ONEWAY)
+        rt_out = _make_snapshot(
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 10),
+            price="495.00",
+            search_type=SearchType.ROUNDTRIP,
+        )
+        rt_ret = _make_snapshot(
+            origin="FOR",
+            destination="GRU",
+            flight_date=date(2024, 7, 20),
+            price="495.00",
+            search_type=SearchType.ROUNDTRIP,
+        )
+        ow_out = _make_snapshot(
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 10),
+            price="500.00",
+            search_type=SearchType.ONEWAY,
+        )
+        ow_ret = _make_snapshot(
+            origin="FOR",
+            destination="GRU",
+            flight_date=date(2024, 7, 20),
+            price="500.00",
+            search_type=SearchType.ONEWAY,
+        )
 
         mock_session = self._make_session(config)
 
-        with patch("flight_watcher.queries.get_latest_snapshots", return_value=[rt_out, rt_ret, ow_out, ow_ret]):
+        with patch(
+            "flight_watcher.queries.get_latest_snapshots",
+            return_value=[rt_out, rt_ret, ow_out, ow_ret],
+        ):
             results = roundtrip_vs_oneway(mock_session, search_config_id=1)
 
         assert len(results) == 1
@@ -415,20 +534,48 @@ class TestRoundtripVsOneway:
     def test_excludes_pairs_exceeding_max_trip_days(self):
         """Date pairs with trip_days > max_trip_days are excluded."""
         config = _make_config(
-            origin="GRU", destination="FOR",
+            origin="GRU",
+            destination="FOR",
             must_arrive_by=date(2024, 7, 31),
             must_stay_until=date(2024, 7, 1),
             max_trip_days=7,
         )
         # Jul 10 → Jul 20 = 10 days > 7
-        rt_out = _make_snapshot(origin="GRU", destination="FOR", flight_date=date(2024, 7, 10), price="400.00", search_type=SearchType.ROUNDTRIP)
-        rt_ret = _make_snapshot(origin="FOR", destination="GRU", flight_date=date(2024, 7, 20), price="400.00", search_type=SearchType.ROUNDTRIP)
-        ow_out = _make_snapshot(origin="GRU", destination="FOR", flight_date=date(2024, 7, 10), price="500.00", search_type=SearchType.ONEWAY)
-        ow_ret = _make_snapshot(origin="FOR", destination="GRU", flight_date=date(2024, 7, 20), price="500.00", search_type=SearchType.ONEWAY)
+        rt_out = _make_snapshot(
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 10),
+            price="400.00",
+            search_type=SearchType.ROUNDTRIP,
+        )
+        rt_ret = _make_snapshot(
+            origin="FOR",
+            destination="GRU",
+            flight_date=date(2024, 7, 20),
+            price="400.00",
+            search_type=SearchType.ROUNDTRIP,
+        )
+        ow_out = _make_snapshot(
+            origin="GRU",
+            destination="FOR",
+            flight_date=date(2024, 7, 10),
+            price="500.00",
+            search_type=SearchType.ONEWAY,
+        )
+        ow_ret = _make_snapshot(
+            origin="FOR",
+            destination="GRU",
+            flight_date=date(2024, 7, 20),
+            price="500.00",
+            search_type=SearchType.ONEWAY,
+        )
 
         mock_session = self._make_session(config)
 
-        with patch("flight_watcher.queries.get_latest_snapshots", return_value=[rt_out, rt_ret, ow_out, ow_ret]):
+        with patch(
+            "flight_watcher.queries.get_latest_snapshots",
+            return_value=[rt_out, rt_ret, ow_out, ow_ret],
+        ):
             results = roundtrip_vs_oneway(mock_session, search_config_id=1)
 
         assert results == []
@@ -436,16 +583,41 @@ class TestRoundtripVsOneway:
     def test_includes_same_day_pairs(self):
         """Same-day pairs (trip_days == 0) should appear when max_trip_days >= 0."""
         config = _make_config(
-            origin="GRU", destination="FOR",
+            origin="GRU",
+            destination="FOR",
             must_arrive_by=date(2024, 7, 31),
             must_stay_until=date(2024, 7, 1),
             max_trip_days=30,
         )
         same_date = date(2024, 7, 10)
-        rt_out = _make_snapshot(origin="GRU", destination="FOR", flight_date=same_date, price="400.00", search_type=SearchType.ROUNDTRIP)
-        rt_ret = _make_snapshot(origin="FOR", destination="GRU", flight_date=same_date, price="400.00", search_type=SearchType.ROUNDTRIP)
-        ow_out = _make_snapshot(origin="GRU", destination="FOR", flight_date=same_date, price="600.00", search_type=SearchType.ONEWAY)
-        ow_ret = _make_snapshot(origin="FOR", destination="GRU", flight_date=same_date, price="600.00", search_type=SearchType.ONEWAY)
+        rt_out = _make_snapshot(
+            origin="GRU",
+            destination="FOR",
+            flight_date=same_date,
+            price="400.00",
+            search_type=SearchType.ROUNDTRIP,
+        )
+        rt_ret = _make_snapshot(
+            origin="FOR",
+            destination="GRU",
+            flight_date=same_date,
+            price="400.00",
+            search_type=SearchType.ROUNDTRIP,
+        )
+        ow_out = _make_snapshot(
+            origin="GRU",
+            destination="FOR",
+            flight_date=same_date,
+            price="600.00",
+            search_type=SearchType.ONEWAY,
+        )
+        ow_ret = _make_snapshot(
+            origin="FOR",
+            destination="GRU",
+            flight_date=same_date,
+            price="600.00",
+            search_type=SearchType.ONEWAY,
+        )
 
         mock_session = self._make_session(config)
         snaps = [rt_out, rt_ret, ow_out, ow_ret]
@@ -499,7 +671,9 @@ class TestPriceHistory:
     def test_filters_by_brand(self):
         snap = _make_mock_snapshot(brand="STANDARD")
         session = _mock_session_with_all([snap])
-        result = price_history(session, "FOR", "MIA", date(2026, 6, 21), brand="STANDARD")
+        result = price_history(
+            session, "FOR", "MIA", date(2026, 6, 21), brand="STANDARD"
+        )
         assert result is not None
         session.execute.assert_called_once()
 
@@ -645,10 +819,23 @@ class TestPriceTrendSummary:
     def test_trend_summary_uses_min_price_per_scan(self):
         """Multiple itineraries in same scan run for same flight_date → only min price used."""
         session = MagicMock()
-        snap1 = _make_snapshot(scan_run_id=1, flight_date=date(2025, 6, 21), price=Decimal("1000"), fetched_at=datetime(2025, 3, 1, 10, 0))
-        snap2 = _make_snapshot(scan_run_id=1, flight_date=date(2025, 6, 21), price=Decimal("1500"), fetched_at=datetime(2025, 3, 1, 10, 0))
+        snap1 = _make_snapshot(
+            scan_run_id=1,
+            flight_date=date(2025, 6, 21),
+            price=Decimal("1000"),
+            fetched_at=datetime(2025, 3, 1, 10, 0),
+        )
+        snap2 = _make_snapshot(
+            scan_run_id=1,
+            flight_date=date(2025, 6, 21),
+            price=Decimal("1500"),
+            fetched_at=datetime(2025, 3, 1, 10, 0),
+        )
         # Same scan run (id=1), same flight_date, different itineraries → should use min=1000
-        session.execute.return_value.scalars.return_value.all.return_value = [snap1, snap2]
+        session.execute.return_value.scalars.return_value.all.return_value = [
+            snap1,
+            snap2,
+        ]
 
         result = price_trend_summary(session, search_config_id=1)
 

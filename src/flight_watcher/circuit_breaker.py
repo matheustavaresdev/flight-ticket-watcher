@@ -64,9 +64,8 @@ class CircuitBreaker:
                 return True  # allow one probe request
             return False  # probe already in flight
         # OPEN — still in backoff
-        remaining = (
-            self.backoff_levels[self._backoff_index]
-            - (time.monotonic() - self._opened_at)
+        remaining = self.backoff_levels[self._backoff_index] - (
+            time.monotonic() - self._opened_at
         )
         logger.debug(
             "Circuit breaker OPEN — request denied (%.0fs remaining)", remaining
@@ -140,12 +139,15 @@ def get_breaker() -> CircuitBreaker:
     global _breaker
     if _breaker is None:
         try:
-            threshold = int(os.environ.get("CB_FAILURE_THRESHOLD", _DEFAULT_FAILURE_THRESHOLD))
+            threshold = int(
+                os.environ.get("CB_FAILURE_THRESHOLD", _DEFAULT_FAILURE_THRESHOLD)
+            )
             if threshold <= 0:
                 raise ValueError("must be positive")
         except (ValueError, TypeError):
             logger.warning(
-                "CB_FAILURE_THRESHOLD invalid, using default %d", _DEFAULT_FAILURE_THRESHOLD
+                "CB_FAILURE_THRESHOLD invalid, using default %d",
+                _DEFAULT_FAILURE_THRESHOLD,
             )
             threshold = _DEFAULT_FAILURE_THRESHOLD
         _breaker = CircuitBreaker(failure_threshold=threshold)

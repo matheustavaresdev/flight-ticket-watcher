@@ -45,7 +45,9 @@ def config():
 @click.argument("destination")
 @click.argument("must_arrive_by")
 @click.argument("must_stay_until")
-@click.option("--max-days", required=True, type=int, help="Maximum trip duration in days.")
+@click.option(
+    "--max-days", required=True, type=int, help="Maximum trip duration in days."
+)
 def config_add(origin, destination, must_arrive_by, must_stay_until, max_days):
     """Add a new search configuration.
 
@@ -85,7 +87,13 @@ def config_add(origin, destination, must_arrive_by, must_stay_until, max_days):
 
 
 @config.command("list")
-@click.option("--all", "include_all", is_flag=True, default=False, help="Include inactive configs.")
+@click.option(
+    "--all",
+    "include_all",
+    is_flag=True,
+    default=False,
+    help="Include inactive configs.",
+)
 def config_list(include_all):
     """List search configurations."""
     with get_session() as session:

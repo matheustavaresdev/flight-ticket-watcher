@@ -20,12 +20,19 @@ def search_one_way(
     """Search one-way flights and return a list of FlightResult."""
     breaker = get_breaker()
     if not breaker.allow_request():
-        logger.warning("Circuit breaker OPEN — skipping search %s→%s on %s", origin, destination, date)
+        logger.warning(
+            "Circuit breaker OPEN — skipping search %s→%s on %s",
+            origin,
+            destination,
+            date,
+        )
         return []
     for attempt in range(3):
         try:
             query = create_query(
-                flights=[FlightQuery(date=date, from_airport=origin, to_airport=destination)],
+                flights=[
+                    FlightQuery(date=date, from_airport=origin, to_airport=destination)
+                ],
                 trip="one-way",
                 passengers=Passengers(adults=passengers),
                 currency="BRL",
@@ -44,19 +51,35 @@ def search_one_way(
             if strategy.skip_item:
                 logger.warning(
                     "search_one_way %s→%s %s: %s (category=%s) — skipping",
-                    origin, destination, date, exc, category.value,
+                    origin,
+                    destination,
+                    date,
+                    exc,
+                    category.value,
                 )
                 return []
             if attempt < strategy.max_retries:
                 wait = random_delay(strategy.min_delay_sec, strategy.max_delay_sec)
                 logger.warning(
                     "search_one_way %s→%s %s failed (attempt %d/%d, category=%s): %s — retried after %.0fs",
-                    origin, destination, date, attempt + 1, strategy.max_retries, category.value, exc, wait,
+                    origin,
+                    destination,
+                    date,
+                    attempt + 1,
+                    strategy.max_retries,
+                    category.value,
+                    exc,
+                    wait,
                 )
             else:
                 logger.error(
                     "search_one_way %s→%s %s failed after %d attempts (category=%s): %s",
-                    origin, destination, date, attempt + 1, category.value, exc,
+                    origin,
+                    destination,
+                    date,
+                    attempt + 1,
+                    category.value,
+                    exc,
                 )
                 break
     return []

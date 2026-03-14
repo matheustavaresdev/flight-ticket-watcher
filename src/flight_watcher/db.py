@@ -57,7 +57,9 @@ def get_session() -> Generator[Session, None, None]:
     """Context manager for database sessions."""
     global SessionLocal
     if SessionLocal is None:
-        SessionLocal = sessionmaker(bind=get_engine(), autocommit=False, autoflush=False)
+        SessionLocal = sessionmaker(
+            bind=get_engine(), autocommit=False, autoflush=False
+        )
     session = SessionLocal()
     try:
         yield session

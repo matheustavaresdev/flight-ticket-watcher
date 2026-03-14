@@ -7,10 +7,12 @@ from flight_watcher.scanner_state import ScannerState, ScannerStatus, get_scanne
 class TestScannerState(unittest.TestCase):
     def setUp(self):
         import flight_watcher.scanner_state as mod
+
         mod._state = None
 
     def tearDown(self):
         import flight_watcher.scanner_state as mod
+
         mod._state = None
 
     def test_initial_status_is_idle(self):

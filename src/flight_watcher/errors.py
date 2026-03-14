@@ -6,10 +6,10 @@ logger = logging.getLogger(__name__)
 
 
 class ErrorCategory(enum.Enum):
-    RATE_LIMITED = "rate_limited"      # 429, CAPTCHA challenge
-    NETWORK_ERROR = "network_error"    # timeout, DNS, connection
-    PAGE_ERROR = "page_error"          # element not found, parse failure
-    BLOCKED = "blocked"                # Akamai challenge, 403
+    RATE_LIMITED = "rate_limited"  # 429, CAPTCHA challenge
+    NETWORK_ERROR = "network_error"  # timeout, DNS, connection
+    PAGE_ERROR = "page_error"  # element not found, parse failure
+    BLOCKED = "blocked"  # Akamai challenge, 403
 
 
 @dataclass(frozen=True)
@@ -21,10 +21,18 @@ class RetryStrategy:
 
 
 RETRY_STRATEGIES: dict[ErrorCategory, RetryStrategy] = {
-    ErrorCategory.RATE_LIMITED: RetryStrategy(max_retries=1, min_delay_sec=1800, max_delay_sec=3600, skip_item=False),
-    ErrorCategory.NETWORK_ERROR: RetryStrategy(max_retries=3, min_delay_sec=60, max_delay_sec=300, skip_item=False),
-    ErrorCategory.PAGE_ERROR: RetryStrategy(max_retries=0, min_delay_sec=0, max_delay_sec=0, skip_item=True),
-    ErrorCategory.BLOCKED: RetryStrategy(max_retries=0, min_delay_sec=0, max_delay_sec=0, skip_item=False),
+    ErrorCategory.RATE_LIMITED: RetryStrategy(
+        max_retries=1, min_delay_sec=1800, max_delay_sec=3600, skip_item=False
+    ),
+    ErrorCategory.NETWORK_ERROR: RetryStrategy(
+        max_retries=3, min_delay_sec=60, max_delay_sec=300, skip_item=False
+    ),
+    ErrorCategory.PAGE_ERROR: RetryStrategy(
+        max_retries=0, min_delay_sec=0, max_delay_sec=0, skip_item=True
+    ),
+    ErrorCategory.BLOCKED: RetryStrategy(
+        max_retries=0, min_delay_sec=0, max_delay_sec=0, skip_item=False
+    ),
     # BLOCKED: circuit breaker — stop all searches, don't just skip one
 }
 
@@ -45,7 +53,15 @@ def classify_error(exc: Exception, status_code: int | None = None) -> ErrorCateg
         return ErrorCategory.NETWORK_ERROR
 
     # Network errors
-    network_keywords = ["dns", "connection", "reset", "refused", "unreachable", "eof", "broken pipe"]
+    network_keywords = [
+        "dns",
+        "connection",
+        "reset",
+        "refused",
+        "unreachable",
+        "eof",
+        "broken pipe",
+    ]
     if any(kw in exc_msg for kw in network_keywords):
         return ErrorCategory.NETWORK_ERROR
 
@@ -54,7 +70,16 @@ def classify_error(exc: Exception, status_code: int | None = None) -> ErrorCateg
         return ErrorCategory.RATE_LIMITED
 
     # Page interaction errors (element not found, selector issues)
-    page_keywords = ["locator", "selector", "element", "not found", "no such", "parse", "json", "key error"]
+    page_keywords = [
+        "locator",
+        "selector",
+        "element",
+        "not found",
+        "no such",
+        "parse",
+        "json",
+        "key error",
+    ]
     if any(kw in exc_msg for kw in page_keywords):
         return ErrorCategory.PAGE_ERROR
 

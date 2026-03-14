@@ -11,7 +11,13 @@ from typing import Optional
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
-from flight_watcher.models import PriceSnapshot, ScanRun, SearchConfig, ScanStatus, SearchType
+from flight_watcher.models import (
+    PriceSnapshot,
+    ScanRun,
+    SearchConfig,
+    ScanStatus,
+    SearchType,
+)
 
 
 def get_latest_snapshots(
@@ -88,7 +94,9 @@ def best_combinations(
     if config is None:
         return []
 
-    all_snaps = get_latest_snapshots(session, search_config_id, SearchType.ONEWAY, brand)
+    all_snaps = get_latest_snapshots(
+        session, search_config_id, SearchType.ONEWAY, brand
+    )
 
     # Cheapest price per date for outbound direction
     cheapest_out: dict[date, tuple[Decimal, str]] = {}
@@ -184,16 +192,24 @@ def roundtrip_vs_oneway(
             rt_total = rt_out[out_date] + rt_ret[ret_date]
             ow_total = ow_out[out_date] + ow_ret[ret_date]
             max_total = max(rt_total, ow_total)
-            savings_pct = float(abs(rt_total - ow_total) / max_total * 100) if max_total > 0 else 0.0
-            results.append({
-                "outbound_date": out_date,
-                "return_date": ret_date,
-                "roundtrip_total": rt_total,
-                "oneway_total": ow_total,
-                "savings_pct": savings_pct,
-                "recommendation": "roundtrip" if rt_total <= ow_total else "2x one-way",
-                "significant": savings_pct > 5,
-            })
+            savings_pct = (
+                float(abs(rt_total - ow_total) / max_total * 100)
+                if max_total > 0
+                else 0.0
+            )
+            results.append(
+                {
+                    "outbound_date": out_date,
+                    "return_date": ret_date,
+                    "roundtrip_total": rt_total,
+                    "oneway_total": ow_total,
+                    "savings_pct": savings_pct,
+                    "recommendation": "roundtrip"
+                    if rt_total <= ow_total
+                    else "2x one-way",
+                    "significant": savings_pct > 5,
+                }
+            )
 
     return results
 
@@ -291,7 +307,9 @@ def price_trend_summary(
 
     # Build time series: one entry per (scan_run, flight_date), sorted by fetched_at within each date
     groups: dict[date, list[tuple[datetime, Decimal]]] = defaultdict(list)
-    for (_, flight_date), (fetched_at, price) in sorted(run_date_best.items(), key=lambda x: x[1][0]):
+    for (_, flight_date), (fetched_at, price) in sorted(
+        run_date_best.items(), key=lambda x: x[1][0]
+    ):
         groups[flight_date].append((fetched_at, price))
 
     results = []
@@ -307,7 +325,9 @@ def price_trend_summary(
             pct_diff = 0.0
             direction = "→"
         else:
-            pct_diff = float((current_price - rolling_avg_7d) / rolling_avg_7d * Decimal("100"))
+            pct_diff = float(
+                (current_price - rolling_avg_7d) / rolling_avg_7d * Decimal("100")
+            )
             if pct_diff > 5:
                 direction = "↑"
             elif pct_diff < -5:
