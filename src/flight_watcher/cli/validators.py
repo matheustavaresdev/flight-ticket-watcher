@@ -23,4 +23,4 @@ def parse_date(value: str) -> date:
     try:
         return date.fromisoformat(value)
     except ValueError:
-        raise typer.BadParameter(f"Invalid date '{value}': expected format YYYY-MM-DD.")
+        raise typer.BadParameter(f"Invalid date '{value}': not a valid calendar date.")
