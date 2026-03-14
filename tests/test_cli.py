@@ -335,6 +335,33 @@ class TestSearchCommands:
         assert result.exit_code != 0
         assert "Invalid date" in result.output
 
+    def test_search_latam_rejects_single_digit_date_components(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["search", "latam", "--origin", "GRU", "--dest", "CGH", "--out", "2026-4-1"],
+        )
+        assert result.exit_code != 0
+        assert "Invalid date" in result.output
+
+    def test_search_latam_rejects_datetime_string(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["search", "latam", "--origin", "GRU", "--dest", "CGH", "--out", "2026-04-01T00:00:00"],
+        )
+        assert result.exit_code != 0
+        assert "Invalid date" in result.output
+
+    def test_search_latam_rejects_extended_year(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["search", "latam", "--origin", "GRU", "--dest", "CGH", "--out", "+002026-04-01"],
+        )
+        assert result.exit_code != 0
+        assert "Invalid date" in result.output
+
     def test_search_fast_invokes_scanner(self):
         runner = CliRunner()
         mock_results = [MagicMock()]
