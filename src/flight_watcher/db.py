@@ -67,3 +67,13 @@ def get_session() -> Generator[Session, None, None]:
         raise
     finally:
         session.close()
+
+
+def dispose_engine() -> None:
+    """Dispose the SQLAlchemy engine and reset module globals."""
+    global _engine, SessionLocal
+    if _engine is not None:
+        _engine.dispose()
+        _engine = None
+        SessionLocal = None
+        logger.info("Database engine disposed")

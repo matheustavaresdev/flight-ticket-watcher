@@ -70,3 +70,36 @@ class TestGetSession:
         mock_session.rollback.assert_called_once()
         mock_session.close.assert_called_once()
         mock_session.commit.assert_not_called()
+
+
+class TestDisposeEngine:
+    def setup_method(self):
+        import flight_watcher.db as db_mod
+        db_mod._engine = None
+        db_mod.SessionLocal = None
+
+    def teardown_method(self):
+        import flight_watcher.db as db_mod
+        db_mod._engine = None
+        db_mod.SessionLocal = None
+
+    def test_dispose_engine_disposes_and_resets(self):
+        import flight_watcher.db as db_mod
+        mock_engine = MagicMock()
+        db_mod._engine = mock_engine
+        db_mod.SessionLocal = MagicMock()
+
+        from flight_watcher.db import dispose_engine
+        dispose_engine()
+
+        mock_engine.dispose.assert_called_once()
+        assert db_mod._engine is None
+        assert db_mod.SessionLocal is None
+
+    def test_dispose_engine_noop_when_no_engine(self):
+        import flight_watcher.db as db_mod
+        db_mod._engine = None
+
+        from flight_watcher.db import dispose_engine
+        # Should not raise
+        dispose_engine()

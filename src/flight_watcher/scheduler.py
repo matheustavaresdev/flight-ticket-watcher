@@ -2,13 +2,14 @@ import logging
 import os
 from typing import Optional
 
-from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, EVENT_JOB_SUBMITTED
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import timezone
 
 from flight_watcher.db import get_database_url
+from flight_watcher.scanner_state import ScannerStatus, get_scanner_state
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ def create_scheduler() -> BackgroundScheduler:
         job_defaults=job_defaults,
         timezone=timezone.utc,
     )
+    scheduler.add_listener(_on_job_submitted, EVENT_JOB_SUBMITTED)
     scheduler.add_listener(_on_job_executed, EVENT_JOB_EXECUTED)
     scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
     return scheduler
@@ -52,11 +54,18 @@ def get_scheduler() -> BackgroundScheduler:
     return _scheduler
 
 
+def _on_job_submitted(event) -> None:
+    get_scanner_state().status = ScannerStatus.SCANNING
+    logger.info("Job %s submitted, scanner scanning", event.job_id)
+
+
 def _on_job_executed(event) -> None:
+    get_scanner_state().status = ScannerStatus.IDLE
     logger.info("Job %s executed successfully (retval=%r)", event.job_id, event.retval)
 
 
 def _on_job_error(event) -> None:
+    get_scanner_state().status = ScannerStatus.IDLE
     logger.error(
         "Job %s raised an exception: %s\n%s",
         event.job_id,
