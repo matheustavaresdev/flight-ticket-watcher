@@ -761,7 +761,7 @@ class TestSearchCommands:
         assert result.exit_code == 0, result.output
         mock_search.assert_called_once()
 
-    def test_search_error_displays_category(self):
+    def test_search_latam_error_displays_category(self):
         from flight_watcher.errors import ErrorCategory
         from flight_watcher.models import SearchResult
 
@@ -780,9 +780,9 @@ class TestSearchCommands:
                 ["search", "latam", "--origin", "GRU", "--dest", "FOR", "--out", "2026-04-12"],
             )
 
-        assert "category=page_error" in result.output
+        assert "category=page_error" in result.stderr
 
-    def test_search_error_displays_hint(self):
+    def test_search_latam_error_displays_hint(self):
         from flight_watcher.errors import ErrorCategory
         from flight_watcher.models import SearchResult
 
@@ -802,10 +802,10 @@ class TestSearchCommands:
                 ["search", "latam", "--origin", "GRU", "--dest", "FOR", "--out", "2026-04-12"],
             )
 
-        assert "Hint:" in result.output
-        assert "Custom hint" in result.output
+        assert "Hint:" in result.stderr
+        assert "Custom hint" in result.stderr
 
-    def test_search_error_falls_back_to_category_hint(self):
+    def test_search_latam_error_falls_back_to_category_hint(self):
         from flight_watcher.errors import ErrorCategory
         from flight_watcher.models import SearchResult
 
@@ -825,9 +825,9 @@ class TestSearchCommands:
                 ["search", "latam", "--origin", "GRU", "--dest", "FOR", "--out", "2026-04-12"],
             )
 
-        assert "Hint:" in result.output
+        assert "Hint:" in result.stderr
         # RATE_LIMITED hint mentions circuit breaker
-        assert "Circuit breaker" in result.output or "circuit breaker" in result.output.lower()
+        assert "Circuit breaker" in result.stderr or "circuit breaker" in result.stderr.lower()
 
     def test_search_fast_error_displays_category_and_hint(self):
         from flight_watcher.errors import ErrorCategory
@@ -854,7 +854,7 @@ class TestSearchCommands:
         assert "Hint:" in result.stderr
         assert "Check connection" in result.stderr
 
-    def test_search_error_displays_category_and_hint(self):
+    def test_search_latam_error_displays_category_and_hint(self):
         from flight_watcher.errors import ErrorCategory
         from flight_watcher.models import SearchResult
 
