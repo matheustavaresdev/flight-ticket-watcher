@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from flight_watcher.models import SearchResult
 
 from flight_watcher.cli.validators import parse_date, parse_iata
+from flight_watcher.errors import get_error_hint
 
 app = typer.Typer(help="Search for flights.", no_args_is_help=True)
 
@@ -21,7 +22,6 @@ def _print_search_error(label: str, result: "SearchResult[Any]") -> None:
     typer.echo(parts[0], err=True)
     hint = result.hint
     if not hint and result.error_category:
-        from flight_watcher.errors import get_error_hint
         hint = get_error_hint(result.error_category)
     if hint:
         typer.echo(f"    Hint: {hint}", err=True)

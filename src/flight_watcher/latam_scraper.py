@@ -3,11 +3,11 @@
 import json
 import logging
 import time
-from datetime import datetime
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
-from patchright.sync_api import sync_playwright
+from patchright.sync_api import Response, sync_playwright
 
 from flight_watcher.browser_profiles import get_random_profile
 from flight_watcher.circuit_breaker import get_breaker
@@ -54,7 +54,7 @@ def _build_latam_url(
     return url
 
 
-def _make_bff_intercept(captured: dict) -> Callable:
+def _make_bff_intercept(captured: dict) -> Callable[[Response], None]:
     """Return a response handler that captures BFF offer data into *captured*."""
 
     def on_response(response):

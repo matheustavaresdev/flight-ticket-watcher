@@ -54,7 +54,10 @@ def health_check() -> None:
     typer.echo(f"Scanner:          {scanner}")
     typer.echo(f"Circuit breaker:  {cb_state} (failures={cb_failures})")
     if cb_backoff is not None:
-        typer.echo(f"  backoff remaining: {float(cb_backoff):.0f}s")
+        try:
+            typer.echo(f"  backoff remaining: {float(cb_backoff):.0f}s")
+        except (ValueError, TypeError):
+            typer.echo(f"  backoff remaining: {cb_backoff}")
     typer.echo(f"Database:         {'reachable' if db_reachable else 'UNREACHABLE'}")
     if last_scans:
         typer.echo("Last successful scans:")
