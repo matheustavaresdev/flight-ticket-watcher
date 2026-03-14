@@ -103,8 +103,6 @@ def search_latam(
                 logger.warning(
                     "latam search failed (category=%s): %s", category.value, exc
                 )
-                context.close()
-                browser.close()
                 elapsed = time.monotonic() - start
                 logger.info("Search completed in %.1fs", elapsed)
                 return SearchResult.failure(
@@ -115,7 +113,7 @@ def search_latam(
                 )
         finally:
             context.close()
-        browser.close()
+            browser.close()
 
     elapsed = time.monotonic() - start
     logger.info("Search completed in %.1fs", elapsed)
@@ -124,7 +122,12 @@ def search_latam(
         logger.warning(
             "response error (status=%s): %s", captured.get("status"), captured["error"]
         )
-        return SearchResult.failure(captured["error"], duration_sec=elapsed)
+        return SearchResult.failure(
+            captured["error"],
+            error_category=ErrorCategory.PAGE_ERROR,
+            hint="BFF response parse error",
+            duration_sec=elapsed,
+        )
 
     data = captured.get("data")
     if data is None:
@@ -182,8 +185,6 @@ def search_latam_oneway(
                 logger.warning(
                     "latam search failed (category=%s): %s", category.value, exc
                 )
-                context.close()
-                browser.close()
                 elapsed = time.monotonic() - start
                 logger.info("Search completed in %.1fs", elapsed)
                 return SearchResult.failure(
@@ -194,7 +195,7 @@ def search_latam_oneway(
                 )
         finally:
             context.close()
-        browser.close()
+            browser.close()
 
     elapsed = time.monotonic() - start
     logger.info("Search completed in %.1fs", elapsed)
@@ -203,7 +204,12 @@ def search_latam_oneway(
         logger.warning(
             "response error (status=%s): %s", captured.get("status"), captured["error"]
         )
-        return SearchResult.failure(captured["error"], duration_sec=elapsed)
+        return SearchResult.failure(
+            captured["error"],
+            error_category=ErrorCategory.PAGE_ERROR,
+            hint="BFF response parse error",
+            duration_sec=elapsed,
+        )
 
     data = captured.get("data")
     if data is None:
