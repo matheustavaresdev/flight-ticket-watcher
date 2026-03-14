@@ -434,13 +434,20 @@ class TestRunsCommand:
 
 class TestSearchCommands:
     def test_search_latam_invokes_scraper(self):
+        from flight_watcher.models import SearchResult
+
         runner = CliRunner()
         mock_data = MagicMock()
         mock_offers = [MagicMock()]
 
         with (
-            patch("flight_watcher.latam_scraper.search_latam_oneway", return_value=mock_data) as mock_search,
-            patch("flight_watcher.latam_scraper.parse_offers", return_value=mock_offers),
+            patch(
+                "flight_watcher.latam_scraper.search_latam_oneway",
+                return_value=SearchResult.success(mock_data),
+            ) as mock_search,
+            patch(
+                "flight_watcher.latam_scraper.parse_offers", return_value=mock_offers
+            ),
             patch("flight_watcher.display.print_offers"),
         ):
             result = runner.invoke(
@@ -464,7 +471,16 @@ class TestSearchCommands:
         runner = CliRunner()
         result = runner.invoke(
             app,
-            ["search", "latam", "--origin", "GRUU", "--dest", "GRU", "--out", "2026-04-01"],
+            [
+                "search",
+                "latam",
+                "--origin",
+                "GRUU",
+                "--dest",
+                "GRU",
+                "--out",
+                "2026-04-01",
+            ],
         )
         assert result.exit_code != 0
         assert "Invalid IATA" in result.output
@@ -473,7 +489,16 @@ class TestSearchCommands:
         runner = CliRunner()
         result = runner.invoke(
             app,
-            ["search", "latam", "--origin", "GRU", "--dest", "CGH", "--out", "2026/04/01"],
+            [
+                "search",
+                "latam",
+                "--origin",
+                "GRU",
+                "--dest",
+                "CGH",
+                "--out",
+                "2026/04/01",
+            ],
         )
         assert result.exit_code != 0
         assert "Invalid date" in result.output
@@ -482,7 +507,16 @@ class TestSearchCommands:
         runner = CliRunner()
         result = runner.invoke(
             app,
-            ["search", "fast", "--origin", "GRUU", "--dest", "GRU", "--date", "2026-04-01"],
+            [
+                "search",
+                "fast",
+                "--origin",
+                "GRUU",
+                "--dest",
+                "GRU",
+                "--date",
+                "2026-04-01",
+            ],
         )
         assert result.exit_code != 0
         assert "Invalid IATA" in result.output
@@ -491,7 +525,16 @@ class TestSearchCommands:
         runner = CliRunner()
         result = runner.invoke(
             app,
-            ["search", "fast", "--origin", "GRU", "--dest", "CGH", "--date", "2026/04/01"],
+            [
+                "search",
+                "fast",
+                "--origin",
+                "GRU",
+                "--dest",
+                "CGH",
+                "--date",
+                "2026/04/01",
+            ],
         )
         assert result.exit_code != 0
         assert "Invalid date" in result.output
@@ -524,12 +567,15 @@ class TestSearchCommands:
         assert "Invalid date" in result.output
 
     def test_search_fast_invokes_scanner(self):
+        from flight_watcher.models import SearchResult
+
         runner = CliRunner()
         mock_results = [MagicMock()]
 
         with (
             patch(
-                "flight_watcher.scanner.search_one_way", return_value=mock_results
+                "flight_watcher.scanner.search_one_way",
+                return_value=SearchResult.success(mock_results),
             ) as mock_search,
             patch("flight_watcher.display.print_results"),
         ):
@@ -559,8 +605,18 @@ class TestReport:
         cfg.destination = destination
         return cfg
 
-    def _make_snapshot(self, flight_date=None, flight_code="LA3456", brand="LIGHT", price="450.00", currency="BRL", stops=0, duration_min=180):
+    def _make_snapshot(
+        self,
+        flight_date=None,
+        flight_code="LA3456",
+        brand="LIGHT",
+        price="450.00",
+        currency="BRL",
+        stops=0,
+        duration_min=180,
+    ):
         from datetime import datetime
+
         s = MagicMock()
         s.flight_date = flight_date or date(2026, 6, 21)
         s.flight_code = flight_code
@@ -581,10 +637,14 @@ class TestReport:
         session_mock.get.return_value = cfg
         snap = self._make_snapshot()
 
-        with patch("flight_watcher.cli.report.get_session", get_session_mock), \
-             patch("flight_watcher.cli.report.get_latest_snapshots", return_value=[snap]), \
-             patch("flight_watcher.cli.report.best_combinations", return_value=[]), \
-             patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]):
+        with (
+            patch("flight_watcher.cli.report.get_session", get_session_mock),
+            patch(
+                "flight_watcher.cli.report.get_latest_snapshots", return_value=[snap]
+            ),
+            patch("flight_watcher.cli.report.best_combinations", return_value=[]),
+            patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]),
+        ):
             result = runner.invoke(app, ["report", "show", "1"])
 
         assert result.exit_code == 0, result.output
@@ -608,10 +668,12 @@ class TestReport:
             "currency": "BRL",
         }
 
-        with patch("flight_watcher.cli.report.get_session", get_session_mock), \
-             patch("flight_watcher.cli.report.get_latest_snapshots", return_value=[]), \
-             patch("flight_watcher.cli.report.best_combinations", return_value=[combo]), \
-             patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]):
+        with (
+            patch("flight_watcher.cli.report.get_session", get_session_mock),
+            patch("flight_watcher.cli.report.get_latest_snapshots", return_value=[]),
+            patch("flight_watcher.cli.report.best_combinations", return_value=[combo]),
+            patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]),
+        ):
             result = runner.invoke(app, ["report", "show", "1"])
 
         assert result.exit_code == 0, result.output
@@ -636,10 +698,14 @@ class TestReport:
             "currency": "BRL",
         }
 
-        with patch("flight_watcher.cli.report.get_session", get_session_mock), \
-             patch("flight_watcher.cli.report.get_latest_snapshots", return_value=[]), \
-             patch("flight_watcher.cli.report.best_combinations", return_value=[]), \
-             patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[rt_row]):
+        with (
+            patch("flight_watcher.cli.report.get_session", get_session_mock),
+            patch("flight_watcher.cli.report.get_latest_snapshots", return_value=[]),
+            patch("flight_watcher.cli.report.best_combinations", return_value=[]),
+            patch(
+                "flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[rt_row]
+            ),
+        ):
             result = runner.invoke(app, ["report", "show", "1"])
 
         assert result.exit_code == 0, result.output
@@ -681,12 +747,17 @@ class TestReport:
         get_session_mock, session_mock = make_session_mock()
         cfg = self._make_config()
         session_mock.get.return_value = cfg
-        snaps = [self._make_snapshot(flight_code=f"LA{i:04d}", price=str(400 + i)) for i in range(20)]
+        snaps = [
+            self._make_snapshot(flight_code=f"LA{i:04d}", price=str(400 + i))
+            for i in range(20)
+        ]
 
-        with patch("flight_watcher.cli.report.get_session", get_session_mock), \
-             patch("flight_watcher.cli.report.get_latest_snapshots", return_value=snaps), \
-             patch("flight_watcher.cli.report.best_combinations", return_value=[]), \
-             patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]):
+        with (
+            patch("flight_watcher.cli.report.get_session", get_session_mock),
+            patch("flight_watcher.cli.report.get_latest_snapshots", return_value=snaps),
+            patch("flight_watcher.cli.report.best_combinations", return_value=[]),
+            patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]),
+        ):
             result = runner.invoke(app, ["report", "show", "1", "--top", "5"])
 
         assert result.exit_code == 0, result.output

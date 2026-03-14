@@ -603,7 +603,9 @@ class TestSearchAndStoreOneway(unittest.TestCase):
             departure_time="08:00",
             arrival_time="09:30",
         )
-        mock_search_one_way.return_value = [flight_result]
+        from flight_watcher.models import SearchResult
+
+        mock_search_one_way.return_value = SearchResult.success([flight_result])
 
         mock_session = MagicMock()
         scan_run = _make_scan_run(id=7)

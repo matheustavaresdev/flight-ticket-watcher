@@ -256,12 +256,13 @@ def _search_and_store_oneway(
     flight_date: str,
 ) -> int:
     """Run one-way search, convert FlightResult→PriceSnapshot, bulk insert. Returns count stored."""
-    results = search_one_way(origin, destination, flight_date)
-    if not results:
+    result = search_one_way(origin, destination, flight_date)
+    if not result.ok or not result.data:
         logger.debug("No results for %s→%s on %s", origin, destination, flight_date)
         return 0
     snapshots = [
-        _flight_result_to_snapshot(r, scan_run.id, SearchType.ONEWAY) for r in results
+        _flight_result_to_snapshot(r, scan_run.id, SearchType.ONEWAY)
+        for r in result.data
     ]
     session.add_all(snapshots)
     return len(snapshots)
