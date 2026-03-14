@@ -5,7 +5,7 @@ set -euo pipefail
 # but Linear tasks weren't created for remaining items.
 
 INPUT=$(cat)
-STOP_HOOK_ACTIVE=$(echo "$INPUT" | jq -r '.stop_hook_active // false')
+STOP_HOOK_ACTIVE=$(echo "$INPUT" | jq -r '.revise_guard_active // false')
 
 # Prevent infinite loops — if we already blocked once, let it go
 if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
@@ -23,6 +23,12 @@ REVIEW_DIR=".reviews/${SHORT_BRANCH}"
 
 # Only enforce during /revise sessions (review directory must exist)
 if [ ! -d "$REVIEW_DIR" ]; then
+  exit 0
+fi
+
+# Skip enforcement if agent is handing off to /rebase
+LAST_MSG=$(echo "$INPUT" | jq -r '.last_assistant_message // empty')
+if echo "$LAST_MSG" | grep -qiE "Spawning /revise|Spawning /rebase|Handed off to /revise|Handed off to /rebase|spawning.*revise|spawning.*rebase"; then
   exit 0
 fi
 
@@ -44,12 +50,33 @@ fi
 REMAINING=$(grep -cE '^\s*[0-9]+\.' "$LATEST_MANIFEST" 2>/dev/null || echo "0")
 
 if [ "$REMAINING" -eq 0 ]; then
+  # Standalone Step 7b enforcement: even if no Critical/Warning items remain,
+  # suggestions must be captured as Linear tasks
+  SUGGESTIONS_MANIFEST="$REVIEW_DIR/suggestions-manifest.md"
+  if [ -f "$SUGGESTIONS_MANIFEST" ]; then
+    SUGGESTION_COUNT=$(grep -cE '^\s*[0-9]+\.' "$SUGGESTIONS_MANIFEST" 2>/dev/null || echo "0")
+    if [ "$SUGGESTION_COUNT" -gt 0 ] && ! echo "$LAST_MSG" | grep -qiE "Suggestion Tasks Created|suggestion tasks created"; then
+      echo "Suggestions manifest exists with $SUGGESTION_COUNT items but no Suggestion Tasks were created." >&2
+      echo "You MUST run Step 7b: create Linear sub-issues for each suggestion/deferred item before stopping." >&2
+      exit 2
+    fi
+  fi
   exit 0
 fi
 
 # Items remain after 3 iterations — check if agent created Linear tasks
-LAST_MSG=$(echo "$INPUT" | jq -r '.last_assistant_message // empty')
+# Check if agent created Linear tasks for remaining Critical/Warning items
 if echo "$LAST_MSG" | grep -qiE "Linear Tasks Created|Linear tasks created|FLI-[0-9]+.*(Critical|Warning)"; then
+  # Also verify suggestion tasks were created if suggestions exist
+  SUGGESTIONS_MANIFEST="$REVIEW_DIR/suggestions-manifest.md"
+  if [ -f "$SUGGESTIONS_MANIFEST" ]; then
+    SUGGESTION_COUNT=$(grep -cE '^\s*[0-9]+\.' "$SUGGESTIONS_MANIFEST" 2>/dev/null || echo "0")
+    if [ "$SUGGESTION_COUNT" -gt 0 ] && ! echo "$LAST_MSG" | grep -qiE "Suggestion Tasks Created|suggestion tasks created"; then
+      echo "Suggestions manifest has $SUGGESTION_COUNT items but no Suggestion Tasks were created." >&2
+      echo "You MUST run Step 7b: create Linear sub-issues for each suggestion/deferred item before stopping." >&2
+      exit 2
+    fi
+  fi
   exit 0
 fi
 

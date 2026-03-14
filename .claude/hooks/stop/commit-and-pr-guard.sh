@@ -14,7 +14,7 @@ set -euo pipefail
 INPUT=$(cat)
 
 # If we already forced Claude to continue once, let it go — prevents infinite loops
-if [ "$(echo "$INPUT" | jq -r '.stop_hook_active // false')" = "true" ]; then
+if [ "$(echo "$INPUT" | jq -r '.commit_guard_active // false')" = "true" ]; then
   exit 0
 fi
 
@@ -28,9 +28,8 @@ BRANCH=$(git branch --show-current 2>/dev/null || echo "")
 
 DIRTY=$(git status --short 2>/dev/null || echo "")
 if [ -n "$DIRTY" ]; then
-  git add -A 2>/dev/null || true
-  git commit -m "wip: save progress (auto-committed by stop hook)" 2>/dev/null || \
-    git commit -m "wip: save progress (auto-committed by stop hook)" --no-verify 2>/dev/null || true
+  git add -u 2>/dev/null || true
+  git commit -m "wip: save progress (auto-committed by stop hook)" 2>/dev/null || true
 fi
 
 # Push if there are unpushed commits

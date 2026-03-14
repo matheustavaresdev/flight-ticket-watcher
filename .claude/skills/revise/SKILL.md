@@ -163,9 +163,36 @@ After both reviewers complete, read both output files.
 3. Build fix manifest — numbered list with file paths
 4. Write to `.reviews/<SHORT_BRANCH>/fix-manifest-<N>.md`
 
+### Build Suggestions Manifest
+
+Also parse `## Suggestions` sections from both reviews:
+
+1. Parse all suggestions from both reviewers
+2. Deduplicate across reviewers (same file + similar description = one item)
+3. Write to `.reviews/<SHORT_BRANCH>/suggestions-manifest.md`
+
+Suggestions manifest format:
+
+```markdown
+# Suggestions Manifest
+
+## Suggestions
+1. [FILE: flight_watcher/foo.py] <description of the suggestion> (Source: Opus/Codex)
+2. [FILE: flight_watcher/bar.py] <description> (Source: Opus/Codex)
+
+## Deferred Items
+<Empty initially — populated after fix loop if fixer skipped items as "requires architectural change">
+
+## Totals
+- Suggestions: <count>
+- Deferred: <count>
+```
+
+If zero suggestions from both reviewers, still create the file with empty sections — Step 7b needs it.
+
 ### Check if Fix Loop is Needed
 
-If zero Critical AND zero Warning items: **skip to Step 8**.
+If zero Critical AND zero Warning items: **skip to Step 7b** ("Clean review — no Critical or Warning items found"). The fix loop is not needed, but suggestions must still be captured.
 
 ## Step 6: Fix Loop
 
@@ -195,13 +222,15 @@ Launch both reviewers again with iteration-numbered output files.
 
 Write new fix manifest.
 
+Also update `suggestions-manifest.md` with any new suggestions from the re-review. Append new suggestions (deduplicated against existing ones) to the `## Suggestions` section.
+
 ### 6f. Check Progress
 
-- **New count == 0:** Exit loop → Step 8
+- **New count == 0:** Exit loop → Step 7b, then Step 8
 - **New count < old count:** Continue (if iteration < 3)
-- **New count >= old count:** Stop immediately → Step 8
+- **New count >= old count:** Stop immediately → Step 7b, then Step 8
 
-**After iteration 3:** remaining items → Step 7. No items → Step 8. Never attempt a 4th iteration.
+**After iteration 3:** remaining items → Step 7, then Step 7b, then Step 8. No items → Step 7b, then Step 8. Never attempt a 4th iteration.
 
 ### Rationalization Prevention
 
@@ -234,6 +263,62 @@ Print summary:
 - FLI-YYY: <title> (Warning)
 ```
 
+## Step 7b: Capture Suggestions and Deferred Items
+
+**Trigger:** This step ALWAYS runs, regardless of how the fix loop ended (or if it ran at all). It captures non-blocking review findings so they aren't lost in `.reviews/` files.
+
+### Update Suggestions Manifest with Deferred Items
+
+If the fix loop ran, scan all fixer sub-agent outputs for items marked "SKIPPED: requires architectural change" or similar deferral language. Append these to the `## Deferred Items` section of `suggestions-manifest.md`.
+
+Also scan your own output and the review outputs for any language indicating deferred work: "follow-up", "out of scope", "leave for later", "future improvement", "tech debt". Add these as deferred items.
+
+### Read and Check
+
+Read `.reviews/<SHORT_BRANCH>/suggestions-manifest.md`. If it has zero suggestions AND zero deferred items, skip to Step 8.
+
+### Ensure Label Exists
+
+```bash
+linear labels create "Review:Suggestion" --team FLI --color "#3B82F6" 2>/dev/null || true
+```
+
+### Create Sub-issues
+
+For each suggestion or deferred item:
+```bash
+linear issues create "<short description from finding>" \
+    --team FLI \
+    --parent "FLI-<FIRST_ISSUE_ID>" \
+    --description "Suggestion from automated code review of $(git branch --show-current).
+
+**Review finding:** <full finding text>
+**File:** <file path>
+**Source:** <Opus/Codex/Fixer>
+**PR:** $(gh pr view --json url -q '.url' 2>/dev/null || echo 'N/A')
+
+_This is a suggestion, not a blocker. Triage and prioritize as needed._" \
+    --priority low \
+    --labels "Review:Suggestion" \
+    --state "Backlog"
+```
+
+Print summary:
+```
+## Suggestion Tasks Created
+- FLI-XXX: <title> (Suggestion)
+- FLI-YYY: <title> (Deferred)
+```
+
+### Rationalization Prevention
+
+| Thought | Rule |
+|---------|------|
+| "This suggestion isn't worth a ticket" | ALL suggestions become tickets. User triages later. |
+| "I'll just note it in the report" | Notes in reports get lost. Linear tasks don't. |
+| "There are too many suggestions" | Create them all. Bulk-close is easy; recreating lost context isn't. |
+| "This is just a style preference" | Style preferences are valid suggestions. Create the ticket. |
+
 ## Step 8: Final Report + Check Mergeability
 
 ```bash
@@ -243,7 +328,11 @@ git merge-base --is-ancestor origin/main HEAD
 
 ### If branch is up to date — TERMINAL state
 
-Print full report WITH PR URL. Stop and wait for user input.
+Print full report WITH PR URL. Include in the report:
+- Suggestions: <count> (captured as Linear tasks)
+- Deferred: <count> (captured as Linear tasks)
+
+Stop and wait for user input.
 
 ### If branch is behind main — spawn /rebase
 
