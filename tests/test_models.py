@@ -133,6 +133,16 @@ class TestSearchResult:
         assert result.error_category == ErrorCategory.NETWORK_ERROR
         assert result.hint == "retry later"
 
+    def test_success_with_none_data(self):
+        from flight_watcher.models import SearchResult
+
+        r = SearchResult.success(None)
+
+        assert r.ok is True
+        assert r.data is None
+        assert r.error is None
+        assert r.error_category is None
+
     def test_duration_sec_propagated(self):
         from flight_watcher.models import SearchResult
 

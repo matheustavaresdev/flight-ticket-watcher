@@ -467,6 +467,30 @@ class TestHealthCommand:
         assert result.exit_code == 2, result.output
         assert "[WARN]" in result.output
 
+    def test_health_daemon_db_unreachable_and_breaker_open(self):
+        runner = CliRunner()
+        data = {
+            "status": "healthy",
+            "scanner": "idle",
+            "started_at": "2026-03-14T10:00:00",
+            "circuit_breaker": {
+                "state": "open",
+                "consecutive_failures": 3,
+                "backoff_remaining_sec": 30.0,
+            },
+            "db_reachable": False,
+            "last_successful_scans": {},
+            "next_scheduled_scan": None,
+        }
+        urlopen_mock = self._make_urlopen_mock(data)
+
+        with patch("flight_watcher.cli.health.urllib.request.urlopen", urlopen_mock):
+            result = runner.invoke(app, ["health"])
+
+        assert result.exit_code == 1, result.output
+        assert "[FAIL]" in result.output
+        assert "UNREACHABLE" in result.output
+
     def test_health_cb_backoff_string_type(self):
         runner = CliRunner()
         data = {
@@ -637,6 +661,33 @@ class TestSearchCommands:
         assert result.exit_code != 0
         assert "Invalid date" in result.output
 
+    def test_search_fast_rejects_single_digit_date_components(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["search", "fast", "--origin", "GRU", "--dest", "FOR", "--date", "2026-4-1"],
+        )
+        assert result.exit_code != 0
+        assert "Invalid date" in result.output
+
+    def test_search_fast_rejects_datetime_string(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["search", "fast", "--origin", "GRU", "--dest", "FOR", "--date", "2026-04-01T00:00:00"],
+        )
+        assert result.exit_code != 0
+        assert "Invalid date" in result.output
+
+    def test_search_fast_rejects_extended_year(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["search", "fast", "--origin", "GRU", "--dest", "FOR", "--date", "+002026-04-01"],
+        )
+        assert result.exit_code != 0
+        assert "Invalid date" in result.output
+
     def test_search_fast_invokes_scanner(self):
         from flight_watcher.models import SearchResult
 
@@ -735,6 +786,31 @@ class TestSearchCommands:
         # RATE_LIMITED hint mentions circuit breaker
         assert "Circuit breaker" in result.output or "circuit breaker" in result.output.lower()
 
+    def test_search_fast_error_displays_category_and_hint(self):
+        from flight_watcher.errors import ErrorCategory
+        from flight_watcher.models import SearchResult
+
+        runner = CliRunner()
+        failed_result = SearchResult.failure(
+            error="timeout",
+            error_category=ErrorCategory.NETWORK_ERROR,
+            hint="Check connection",
+        )
+
+        with patch(
+            "flight_watcher.scanner.search_one_way",
+            return_value=failed_result,
+        ):
+            result = runner.invoke(
+                app,
+                ["search", "fast", "--origin", "GRU", "--dest", "FOR", "--date", "2026-04-12"],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "category=network_error" in result.output
+        assert "Hint:" in result.output
+        assert "Check connection" in result.output
+
 
 class TestReport:
     def _make_config(self, config_id=1, origin="GRU", destination="FOR"):
@@ -753,6 +829,10 @@ class TestReport:
         currency="BRL",
         stops=0,
         duration_min=180,
+        departure_hour=8,
+        departure_minute=0,
+        arrival_hour=11,
+        arrival_minute=0,
     ):
         from datetime import datetime
 
@@ -765,8 +845,8 @@ class TestReport:
         s.stops = stops
         s.duration_min = duration_min
         fd = s.flight_date
-        s.departure_time = datetime(fd.year, fd.month, fd.day, 8, 0)
-        s.arrival_time = datetime(fd.year, fd.month, fd.day, 11, 0)
+        s.departure_time = datetime(fd.year, fd.month, fd.day, departure_hour, departure_minute)
+        s.arrival_time = datetime(fd.year, fd.month, fd.day, arrival_hour, arrival_minute)
         return s
 
     def test_report_show_prints_top_flights(self):
