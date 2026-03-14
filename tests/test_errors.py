@@ -83,4 +83,6 @@ def test_get_error_hint_missing_context_returns_template():
     assert isinstance(hint, str)
     assert len(hint) > 0
     # Angle-bracket placeholders should be present as instructional text
-    assert "<ORIGIN>" in hint or "origin" in hint.lower()
+    assert "<ORIGIN>" in hint
+    assert "<DEST>" in hint
+    assert "<DATE>" in hint
