@@ -1,6 +1,7 @@
 """Tests for the flight_watcher CLI commands."""
 
 from datetime import date
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
@@ -313,3 +314,143 @@ class TestSearchCommands:
 
         assert result.exit_code == 0, result.output
         mock_search.assert_called_once()
+
+
+class TestReport:
+    def _make_config(self, config_id=1, origin="GRU", destination="FOR"):
+        cfg = MagicMock(spec=SearchConfig)
+        cfg.id = config_id
+        cfg.origin = origin
+        cfg.destination = destination
+        return cfg
+
+    def _make_snapshot(self, flight_date=None, flight_code="LA3456", brand="LIGHT", price="450.00", currency="BRL", stops=0, duration_min=180):
+        from datetime import datetime
+        s = MagicMock()
+        s.flight_date = flight_date or date(2026, 6, 21)
+        s.flight_code = flight_code
+        s.brand = brand
+        s.price = Decimal(price)
+        s.currency = currency
+        s.stops = stops
+        s.duration_min = duration_min
+        s.departure_time = datetime(2026, 6, 21, 8, 0)
+        s.arrival_time = datetime(2026, 6, 21, 11, 0)
+        return s
+
+    def test_report_show_prints_top_flights(self):
+        runner = CliRunner()
+        get_session_mock, session_mock = make_session_mock()
+        cfg = self._make_config()
+        session_mock.get.return_value = cfg
+        snap = self._make_snapshot()
+
+        with patch("flight_watcher.cli.report.get_session", get_session_mock), \
+             patch("flight_watcher.cli.report.get_latest_snapshots", return_value=[snap]) as mock_snaps, \
+             patch("flight_watcher.cli.report.best_combinations", return_value=[]) as mock_combos, \
+             patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]) as mock_rt:
+            result = runner.invoke(app, ["report", "show", "1"])
+
+        assert result.exit_code == 0, result.output
+        assert "Top Flights" in result.output
+        assert "LA3456" in result.output
+        assert "[OK]" in result.output
+
+    def test_report_show_prints_best_combinations(self):
+        runner = CliRunner()
+        get_session_mock, session_mock = make_session_mock()
+        cfg = self._make_config()
+        session_mock.get.return_value = cfg
+
+        combo = {
+            "outbound_date": date(2026, 6, 21),
+            "return_date": date(2026, 6, 26),
+            "trip_days": 5,
+            "outbound_price": Decimal("450.00"),
+            "return_price": Decimal("380.00"),
+            "total_price": Decimal("830.00"),
+            "currency": "BRL",
+        }
+
+        with patch("flight_watcher.cli.report.get_session", get_session_mock), \
+             patch("flight_watcher.cli.report.get_latest_snapshots", return_value=[]), \
+             patch("flight_watcher.cli.report.best_combinations", return_value=[combo]), \
+             patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]):
+            result = runner.invoke(app, ["report", "show", "1"])
+
+        assert result.exit_code == 0, result.output
+        assert "Best by Stay Length" in result.output
+        assert "2026-06-21" in result.output
+        assert "830" in result.output
+
+    def test_report_show_prints_rt_vs_ow(self):
+        runner = CliRunner()
+        get_session_mock, session_mock = make_session_mock()
+        cfg = self._make_config()
+        session_mock.get.return_value = cfg
+
+        rt_row = {
+            "outbound_date": date(2026, 6, 21),
+            "return_date": date(2026, 6, 26),
+            "roundtrip_total": Decimal("900.00"),
+            "oneway_total": Decimal("830.00"),
+            "savings_pct": 7.8,
+            "recommendation": "2x one-way",
+            "significant": True,
+        }
+
+        with patch("flight_watcher.cli.report.get_session", get_session_mock), \
+             patch("flight_watcher.cli.report.get_latest_snapshots", return_value=[]), \
+             patch("flight_watcher.cli.report.best_combinations", return_value=[]), \
+             patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[rt_row]):
+            result = runner.invoke(app, ["report", "show", "1"])
+
+        assert result.exit_code == 0, result.output
+        assert "Roundtrip vs One-Way" in result.output
+        assert "2x one-way" in result.output
+        assert "**" in result.output
+
+    def test_report_show_invalid_config_exits_1(self):
+        runner = CliRunner()
+        get_session_mock, session_mock = make_session_mock()
+        session_mock.get.return_value = None
+
+        with patch("flight_watcher.cli.report.get_session", get_session_mock):
+            result = runner.invoke(app, ["report", "show", "999"])
+
+        assert result.exit_code == 1
+
+    def test_report_show_brand_filter(self):
+        runner = CliRunner()
+        get_session_mock, session_mock = make_session_mock()
+        cfg = self._make_config()
+        session_mock.get.return_value = cfg
+        snap = self._make_snapshot(brand="LIGHT")
+
+        with patch("flight_watcher.cli.report.get_session", get_session_mock), \
+             patch("flight_watcher.cli.report.get_latest_snapshots", return_value=[snap]) as mock_snaps, \
+             patch("flight_watcher.cli.report.best_combinations", return_value=[]) as mock_combos, \
+             patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]) as mock_rt:
+            result = runner.invoke(app, ["report", "show", "1", "--brand", "LIGHT"])
+
+        assert result.exit_code == 0, result.output
+        # When --brand LIGHT is passed, get_latest_snapshots is called once with brand="LIGHT"
+        mock_snaps.assert_called_once()
+        call_kwargs = mock_snaps.call_args
+        assert call_kwargs[1].get("brand") == "LIGHT" or (len(call_kwargs[0]) >= 3 and call_kwargs[0][2] == "LIGHT") or "LIGHT" in str(call_kwargs)
+
+    def test_report_show_top_limits_rows(self):
+        runner = CliRunner()
+        get_session_mock, session_mock = make_session_mock()
+        cfg = self._make_config()
+        session_mock.get.return_value = cfg
+        snaps = [self._make_snapshot(flight_code=f"LA{i:04d}", price=str(400 + i)) for i in range(20)]
+
+        with patch("flight_watcher.cli.report.get_session", get_session_mock), \
+             patch("flight_watcher.cli.report.get_latest_snapshots", return_value=snaps), \
+             patch("flight_watcher.cli.report.best_combinations", return_value=[]), \
+             patch("flight_watcher.cli.report.roundtrip_vs_oneway", return_value=[]):
+            result = runner.invoke(app, ["report", "show", "1", "--top", "5"])
+
+        assert result.exit_code == 0, result.output
+        assert "Showing top 5 of" in result.output
