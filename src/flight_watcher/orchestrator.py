@@ -241,6 +241,7 @@ def run_scan(config: dict) -> None:
             logger.info("Scan run %d completed", scan_run.id)
 
         except Exception as exc:
+            session.rollback()  # discard uncommitted in-progress date work
             scan_run.status = ScanStatus.FAILED
             scan_run.error_message = str(exc)
             logger.error("Scan run %d failed: %s", scan_run.id, exc)
