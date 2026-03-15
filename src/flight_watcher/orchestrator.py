@@ -226,10 +226,9 @@ def run_scan(config: dict) -> None:
                 random_delay()
 
                 scan_run.last_successful_date = date.fromisoformat(flight_date)
-                # NOTE: cursor is flushed but not committed until the full run completes.
-                # A crash loses all progress for this run; the next run will re-scan from
-                # the last *committed* cursor (i.e. the previous successful run's position).
-                session.flush()
+                # Commit per-date so snapshots and cursor survive a mid-scan failure.
+                # On retry, _dates_after_cursor skips already-committed dates.
+                session.commit()
                 logger.debug(
                     "Date %s: stored %d outbound + %d return snapshots",
                     flight_date,
@@ -245,6 +244,7 @@ def run_scan(config: dict) -> None:
             scan_run.status = ScanStatus.FAILED
             scan_run.error_message = str(exc)
             logger.error("Scan run %d failed: %s", scan_run.id, exc)
+            session.commit()
             raise
 
         # Roundtrip phase (no-op for fast-flights backend)
