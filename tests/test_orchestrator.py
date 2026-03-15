@@ -682,6 +682,7 @@ class TestFailureAwareCursorAdvancement(unittest.TestCase):
         self.assertIn("scan_run", captured)
         self.assertEqual(captured["scan_run"].status, ScanStatus.FAILED)
         self.assertIsNone(captured["scan_run"].last_successful_date)
+        mock_session.rollback.assert_called_once()
 
     @patch(f"{MODULE}.get_session")
     @patch(f"{MODULE}._find_resumable_run", return_value=None)
@@ -851,11 +852,12 @@ class TestFailureAwareCursorAdvancement(unittest.TestCase):
         with self.assertRaises(SearchFailedError):
             run_scan(config)
 
-        # 2 per-date commits + 1 FAILED status commit
-        self.assertEqual(mock_session.commit.call_count, 3)
+        # 1 initial ScanRun commit + 2 per-date commits + 1 FAILED status commit
+        self.assertEqual(mock_session.commit.call_count, 4)
         self.assertIn("scan_run", captured)
         self.assertEqual(captured["scan_run"].last_successful_date, date(2026, 6, 14))
         self.assertEqual(captured["scan_run"].status, ScanStatus.FAILED)
+        mock_session.rollback.assert_called_once()
 
     @patch(f"{MODULE}.get_session")
     @patch(f"{MODULE}._find_resumable_run", return_value=None)

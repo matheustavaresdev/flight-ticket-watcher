@@ -160,6 +160,7 @@ def run_scan(config: dict) -> None:
             )
             session.add(scan_run)
             session.flush()
+            session.commit()  # commit before date loop so rollback doesn't undo the ScanRun insert
             logger.info("Started scan run %d for config %d", scan_run.id, config["id"])
 
         remaining_dates = _dates_after_cursor(all_dates, cursor)
