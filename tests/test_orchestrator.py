@@ -682,6 +682,7 @@ class TestFailureAwareCursorAdvancement(unittest.TestCase):
         self.assertIn("scan_run", captured)
         self.assertEqual(captured["scan_run"].status, ScanStatus.FAILED)
         self.assertIsNone(captured["scan_run"].last_successful_date)
+        mock_session.rollback.assert_called_once()
 
     @patch(f"{MODULE}.get_session")
     @patch(f"{MODULE}._find_resumable_run", return_value=None)
@@ -819,6 +820,44 @@ class TestFailureAwareCursorAdvancement(unittest.TestCase):
 
         # Only one call: outbound for the first date (short-circuited before return)
         self.assertEqual(mock_search.call_count, 1)
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}._find_resumable_run", return_value=None)
+    @patch(f"{MODULE}._search_and_store_oneway")
+    @patch(f"{MODULE}.random_delay")
+    @patch(f"{MODULE}.expand_dates")
+    def test_partial_progress_preserved_on_mid_scan_failure(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
+        """Dates 1-2 succeed (committed); date 3 fails. Commit called 3 times total."""
+        from flight_watcher.errors import ErrorCategory, SearchFailedError
+        from flight_watcher.models import SearchResult, ScanStatus
+
+        mock_expand.return_value = (["2026-06-13", "2026-06-14", "2026-06-15"], [])
+        mock_search.side_effect = [
+            SearchResult.success(2),  # date 1 out
+            SearchResult.success(2),  # date 1 return
+            SearchResult.success(2),  # date 2 out
+            SearchResult.success(2),  # date 2 return
+            SearchResult.failure(
+                error="429 Too Many Requests",
+                error_category=ErrorCategory.RATE_LIMITED,
+            ),  # date 3 out — halts scan
+        ]
+        config = _make_config()
+        mock_session, captured = self._setup_session_and_scan_run(mock_get_session)
+
+        from flight_watcher.orchestrator import run_scan
+
+        with self.assertRaises(SearchFailedError):
+            run_scan(config)
+
+        # 1 initial ScanRun commit + 2 per-date commits + 1 FAILED status commit
+        self.assertEqual(mock_session.commit.call_count, 4)
+        self.assertIn("scan_run", captured)
+        self.assertEqual(captured["scan_run"].last_successful_date, date(2026, 6, 14))
+        self.assertEqual(captured["scan_run"].status, ScanStatus.FAILED)
+        mock_session.rollback.assert_called_once()
 
     @patch(f"{MODULE}.get_session")
     @patch(f"{MODULE}._find_resumable_run", return_value=None)
