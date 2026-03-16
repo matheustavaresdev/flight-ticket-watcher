@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model SearchConfig {
+  id             Int      @id @default(autoincrement())
+  origin         String   @db.VarChar(3)
+  destination    String   @db.VarChar(3)
+  mustArriveBy   DateTime @map("must_arrive_by") @db.Date
+  mustStayUntil  DateTime @map("must_stay_until") @db.Date
+  maxTripDays    Int      @map("max_trip_days")
+  minTripDays    Int?     @map("min_trip_days")
+  active         Boolean  @default(true)
+  retryCount     Int      @default(0) @map("retry_count")
+  needsAttention Boolean  @default(false) @map("needs_attention")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  scanRuns    ScanRun[]
+  priceAlerts PriceAlert[]
+
+  @@index([origin, destination])
+  @@map("search_configs")
+}
+
+model ScanRun {
+  id                  Int       @id @default(autoincrement())
+  searchConfigId      Int       @map("search_config_id")
+  startedAt           DateTime  @map("started_at") @db.Timestamptz
+  completedAt         DateTime? @map("completed_at") @db.Timestamptz
+  status              String    @db.VarChar
+  lastSuccessfulDate  DateTime? @map("last_successful_date") @db.Date
+  errorMessage        String?   @map("error_message")
+
+  searchConfig    SearchConfig     @relation(fields: [searchConfigId], references: [id])
+  priceSnapshots  PriceSnapshot[]
+
+  @@index([searchConfigId, status])
+  @@map("scan_runs")
+}
+
+model PriceSnapshot {
+  id            Int      @id @default(autoincrement())
+  scanRunId     Int      @map("scan_run_id")
+  origin        String   @db.VarChar(3)
+  destination   String   @db.VarChar(3)
+  flightDate    DateTime @map("flight_date") @db.Date
+  flightCode    String   @map("flight_code") @db.VarChar(20)
+  departureTime DateTime @map("departure_time") @db.Timestamptz
+  arrivalTime   DateTime @map("arrival_time") @db.Timestamptz
+  durationMin   Int      @map("duration_min")
+  stops         Int
+  brand         String   @db.VarChar(30)
+  price         Decimal  @db.Decimal(10, 2)
+  currency      String   @db.VarChar(3)
+  searchType    String   @map("search_type") @db.VarChar
+  fetchedAt     DateTime @map("fetched_at") @db.Timestamptz
+
+  scanRun ScanRun @relation(fields: [scanRunId], references: [id])
+
+  @@index([scanRunId])
+  @@index([origin, destination, flightDate])
+  @@index([origin, destination, flightDate, brand])
+  @@index([flightDate, fetchedAt])
+  @@map("price_snapshots")
+}
+
+model PriceAlert {
+  id               Int       @id @default(autoincrement())
+  searchConfigId   Int       @map("search_config_id")
+  origin           String    @db.VarChar(3)
+  destination      String    @db.VarChar(3)
+  flightDate       DateTime  @map("flight_date") @db.Date
+  airline          String    @db.VarChar(30)
+  brand            String    @db.VarChar(30)
+  previousLowPrice Decimal   @map("previous_low_price") @db.Decimal(10, 2)
+  newPrice         Decimal   @map("new_price") @db.Decimal(10, 2)
+  priceDropAbs     Decimal   @map("price_drop_abs") @db.Decimal(10, 2)
+  alertType        String    @map("alert_type") @db.VarChar
+  sentTo           String?   @map("sent_to") @db.VarChar(255)
+  sentAt           DateTime? @map("sent_at") @db.Timestamptz
+  createdAt        DateTime  @map("created_at") @db.Timestamptz
+
+  searchConfig SearchConfig @relation(fields: [searchConfigId], references: [id])
+
+  @@map("price_alerts")
+}
