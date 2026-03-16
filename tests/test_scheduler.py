@@ -163,17 +163,15 @@ class TestStartStopScheduler(unittest.TestCase):
 class TestRegisterScanJob(unittest.TestCase):
     def setUp(self):
         import flight_watcher.scheduler as sched_mod
-
         sched_mod._scheduler = None
 
     def tearDown(self):
         import flight_watcher.scheduler as sched_mod
-
         sched_mod._scheduler = None
 
     @patch(f"{SCHED_MODULE}.get_scheduler")
-    def test_register_scan_job_adds_cron_trigger(self, mock_get_scheduler):
-        """Verifies scheduler.add_job called with cron trigger and correct params."""
+    def test_register_scan_job_adds_interval_trigger(self, mock_get_scheduler):
+        """Verifies scheduler.add_job called with interval trigger and correct params."""
         mock_sched = MagicMock()
         mock_get_scheduler.return_value = mock_sched
 
@@ -183,9 +181,38 @@ class TestRegisterScanJob(unittest.TestCase):
 
         mock_sched.add_job.assert_called_once()
         call_kwargs = mock_sched.add_job.call_args[1]
-        self.assertEqual(call_kwargs["trigger"], "cron")
-        self.assertEqual(call_kwargs["id"], "daily_scan")
+        self.assertEqual(call_kwargs["trigger"], "interval")
+        self.assertEqual(call_kwargs["id"], "scheduled_scan")
         self.assertTrue(call_kwargs["replace_existing"])
+
+    @patch(f"{SCHED_MODULE}.get_scheduler")
+    def test_register_scan_job_uses_scan_interval_minutes(self, mock_get_scheduler):
+        """Verifies SCAN_INTERVAL_MINUTES env var is passed to interval trigger."""
+        mock_sched = MagicMock()
+        mock_get_scheduler.return_value = mock_sched
+
+        import os
+        from unittest.mock import patch as mock_patch
+        with mock_patch.dict(os.environ, {"SCAN_INTERVAL_MINUTES": "30"}):
+            import flight_watcher.scheduler as sched_mod
+            sched_mod.SCAN_INTERVAL_MINUTES = 30
+            from flight_watcher.scheduler import register_scan_job
+            register_scan_job()
+
+        call_kwargs = mock_sched.add_job.call_args[1]
+        self.assertEqual(call_kwargs["minutes"], 30)
+
+    @patch(f"{SCHED_MODULE}.get_scheduler")
+    def test_register_scan_job_default_interval_is_60(self, mock_get_scheduler):
+        """Verifies default scan interval is 60 minutes."""
+        mock_sched = MagicMock()
+        mock_get_scheduler.return_value = mock_sched
+
+        from flight_watcher.scheduler import register_scan_job, SCAN_INTERVAL_MINUTES
+        register_scan_job()
+
+        call_kwargs = mock_sched.add_job.call_args[1]
+        self.assertEqual(call_kwargs["minutes"], SCAN_INTERVAL_MINUTES)
 
 
 class TestJobListenerStateSideEffects(unittest.TestCase):

@@ -152,3 +152,51 @@ class TestSearchResult:
 
         assert r1.duration_sec == 1.23
         assert r2.duration_sec == 4.56
+
+
+class TestPriceAlert:
+    def test_tablename(self):
+        from flight_watcher.models import PriceAlert
+
+        assert PriceAlert.__tablename__ == "price_alerts"
+
+    def test_columns_exist(self):
+        from flight_watcher.models import PriceAlert
+
+        cols = {c.name for c in PriceAlert.__table__.columns}
+        assert cols == {
+            "id",
+            "search_config_id",
+            "origin",
+            "destination",
+            "flight_date",
+            "airline",
+            "brand",
+            "previous_low_price",
+            "new_price",
+            "price_drop_abs",
+            "alert_type",
+            "sent_to",
+            "sent_at",
+            "created_at",
+        }
+
+    def test_fk_references_search_configs(self):
+        from flight_watcher.models import PriceAlert
+
+        fk = next(iter(PriceAlert.__table__.c.search_config_id.foreign_keys))
+        assert fk.target_fullname == "search_configs.id"
+
+    def test_indexes(self):
+        from flight_watcher.models import PriceAlert
+
+        index_names = {idx.name for idx in PriceAlert.__table__.indexes}
+        assert "ix_price_alerts_route_date" in index_names
+
+
+class TestAlertType:
+    def test_alert_type_values(self):
+        from flight_watcher.models import AlertType
+
+        assert AlertType.NEW_LOW.value == "new_low"
+        assert AlertType.THRESHOLD.value == "threshold"

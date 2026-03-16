@@ -82,6 +82,11 @@ class SearchType(enum.Enum):
     ROUNDTRIP = "roundtrip"
 
 
+class AlertType(enum.Enum):
+    NEW_LOW = "new_low"
+    THRESHOLD = "threshold"
+
+
 class SearchConfig(Base):
     __tablename__ = "search_configs"
 
@@ -110,6 +115,7 @@ class SearchConfig(Base):
     )
 
     scan_runs: Mapped[list["ScanRun"]] = relationship(back_populates="search_config")
+    price_alerts: Mapped[list["PriceAlert"]] = relationship(back_populates="search_config")
 
     __table_args__ = (Index("ix_search_configs_origin_dest", "origin", "destination"),)
 
@@ -198,4 +204,41 @@ class PriceSnapshot(Base):
             "brand",
         ),
         Index("ix_price_snapshots_date_fetched", "flight_date", "fetched_at"),
+    )
+
+
+class PriceAlert(Base):
+    __tablename__ = "price_alerts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    search_config_id: Mapped[int] = mapped_column(
+        ForeignKey("search_configs.id"), nullable=False
+    )
+    origin: Mapped[str] = mapped_column(String(3), nullable=False)
+    destination: Mapped[str] = mapped_column(String(3), nullable=False)
+    flight_date: Mapped[date] = mapped_column(Date, nullable=False)
+    airline: Mapped[str] = mapped_column(String(30), nullable=False)
+    brand: Mapped[str] = mapped_column(String(30), nullable=False)
+    previous_low_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    new_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    price_drop_abs: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    alert_type: Mapped[AlertType] = mapped_column(
+        Enum(
+            AlertType,
+            native_enum=False,
+            values_callable=lambda x: [e.value for e in x],
+            validate_strings=True,
+        ),
+        nullable=False,
+    )
+    sent_to: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    search_config: Mapped["SearchConfig"] = relationship(back_populates="price_alerts")
+
+    __table_args__ = (
+        Index("ix_price_alerts_route_date", "origin", "destination", "flight_date", "brand"),
     )
