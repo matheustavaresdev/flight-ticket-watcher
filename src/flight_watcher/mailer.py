@@ -131,6 +131,6 @@ def send_price_alert_email(alert_data: dict) -> bool:
         )
         return True
 
-    except smtplib.SMTPException as exc:
+    except (smtplib.SMTPException, OSError) as exc:
         logger.error("Failed to send price alert email: %s", exc)
         return False

@@ -97,6 +97,10 @@ def register_scan_job() -> None:
     from flight_watcher.orchestrator import run_all_scans
 
     scheduler = get_scheduler()
+    try:
+        scheduler.remove_job("daily_scan")
+    except Exception:
+        pass
     scheduler.add_job(
         run_all_scans,
         trigger="interval",

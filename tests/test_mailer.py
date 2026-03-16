@@ -107,6 +107,25 @@ class TestSendPriceAlertEmail(unittest.TestCase):
         self.assertFalse(result)
         self.assertTrue(any("Failed" in line for line in cm.output))
 
+    @patch(f"{MAILER_MODULE}.is_email_configured", return_value=True)
+    @patch(f"{MAILER_MODULE}.SMTP_HOST", "smtp.gmail.com")
+    @patch(f"{MAILER_MODULE}.SMTP_PORT", 587)
+    @patch(f"{MAILER_MODULE}.SMTP_FROM", "alerts@example.com")
+    @patch(f"{MAILER_MODULE}.ALERT_EMAIL_TO", "me@example.com")
+    @patch(f"{MAILER_MODULE}.SMTP_USERNAME", "")
+    @patch(f"{MAILER_MODULE}.SMTP_PASSWORD", "")
+    @patch(f"{MAILER_MODULE}.smtplib.SMTP")
+    def test_send_price_alert_email_connection_refused(self, mock_smtp_cls, *args):
+        mock_smtp_cls.side_effect = ConnectionRefusedError("Connection refused")
+
+        from flight_watcher.mailer import send_price_alert_email
+
+        with self.assertLogs(MAILER_MODULE, level="ERROR") as cm:
+            result = send_price_alert_email(_SAMPLE_ALERT)
+
+        self.assertFalse(result)
+        self.assertTrue(any("Failed" in line for line in cm.output))
+
 
 class TestBuildAlertHtml(unittest.TestCase):
     def test_build_alert_html_contains_key_info(self):
