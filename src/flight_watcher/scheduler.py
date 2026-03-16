@@ -94,13 +94,21 @@ def stop_scheduler() -> None:
 
 def register_scan_job() -> None:
     """Register the periodic scan job with the scheduler."""
+    from apscheduler.jobstores.base import JobLookupError
     from flight_watcher.orchestrator import run_all_scans
 
     scheduler = get_scheduler()
     try:
         scheduler.remove_job("daily_scan")
-    except Exception:
+    except JobLookupError:
         pass
+    existing = scheduler.get_job("scheduled_scan")
+    if existing is not None:
+        existing_minutes = existing.trigger.interval.total_seconds() / 60
+        if existing_minutes == SCAN_INTERVAL_MINUTES:
+            logger.debug("scan job already scheduled with same interval, skipping re-registration")
+            return
+        # Interval changed — fall through to add_job(replace_existing=True)
     scheduler.add_job(
         run_all_scans,
         trigger="interval",
