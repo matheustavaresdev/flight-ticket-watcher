@@ -44,7 +44,7 @@ def _get_last_alert(
     alert_type: AlertType,
     search_config_id: int,
 ) -> PriceAlert | None:
-    """Most recent PriceAlert for route+date+brand+type scoped to this config."""
+    """Most recent successfully-sent PriceAlert for route+date+brand+type scoped to this config."""
     return session.scalars(
         select(PriceAlert)
         .where(PriceAlert.origin == origin)
@@ -53,6 +53,7 @@ def _get_last_alert(
         .where(PriceAlert.brand == brand)
         .where(PriceAlert.alert_type == alert_type)
         .where(PriceAlert.search_config_id == search_config_id)
+        .where(PriceAlert.sent_at.is_not(None))
         .order_by(PriceAlert.created_at.desc())
         .limit(1)
     ).first()
@@ -143,7 +144,7 @@ def detect_price_drops(
                     brand=brand,
                     previous_low_price=prev_price,
                     new_price=cheapest_price,
-                    price_drop_abs=abs(cheapest_price - threshold),
+                    price_drop_abs=abs(cheapest_price - prev_price),
                     alert_type=AlertType.THRESHOLD,
                 )
                 session.add(alert)
