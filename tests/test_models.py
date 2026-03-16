@@ -20,6 +20,7 @@ class TestSearchConfig:
             "must_arrive_by",
             "must_stay_until",
             "max_trip_days",
+            "min_trip_days",
             "active",
             "retry_count",
             "needs_attention",
