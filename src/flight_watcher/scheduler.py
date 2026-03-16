@@ -132,13 +132,6 @@ def register_retry_job(config_id: int) -> None:
     from flight_watcher.orchestrator import run_retry_scan
 
     scheduler = get_scheduler()
-    existing = scheduler.get_job(_retry_job_id(config_id))
-    if existing is not None:
-        existing_minutes = existing.trigger.interval.total_seconds() / 60
-        if existing_minutes == RETRY_INTERVAL_MINUTES:
-            logger.debug("retry job for config %d already scheduled with same interval, skipping re-registration", config_id)
-            return
-        # Interval changed — fall through to add_job(replace_existing=True)
     scheduler.add_job(
         run_retry_scan,
         trigger="interval",

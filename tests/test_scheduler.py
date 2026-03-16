@@ -397,30 +397,18 @@ class TestRegisterRetryJob(unittest.TestCase):
         self.assertTrue(any("7" in line for line in cm.output))
 
     @patch(f"{SCHED_MODULE}.get_scheduler")
-    def test_register_retry_job_skips_if_already_exists(self, mock_get_scheduler):
-        """Verifies add_job is not called when retry job already exists with same interval."""
+    def test_register_retry_job_always_replaces_existing(self, mock_get_scheduler):
+        """Verifies add_job is always called with replace_existing=True even when job already exists.
+
+        register_retry_job() re-anchors the retry window on every failure, so it must
+        always call add_job (never skip) to reset next_run_time via replace_existing=True.
+        """
         from datetime import timedelta
         from flight_watcher.scheduler import RETRY_INTERVAL_MINUTES
 
         mock_sched = MagicMock()
         existing_job = MagicMock()
         existing_job.trigger.interval = timedelta(minutes=RETRY_INTERVAL_MINUTES)
-        mock_sched.get_job.return_value = existing_job
-        mock_get_scheduler.return_value = mock_sched
-        from flight_watcher.scheduler import register_retry_job
-
-        register_retry_job(5)
-        mock_sched.add_job.assert_not_called()
-
-    @patch(f"{SCHED_MODULE}.get_scheduler")
-    def test_register_retry_job_replaces_if_interval_changed(self, mock_get_scheduler):
-        """Verifies add_job is called with replace_existing=True when retry interval differs."""
-        from datetime import timedelta
-        from flight_watcher.scheduler import RETRY_INTERVAL_MINUTES
-
-        mock_sched = MagicMock()
-        existing_job = MagicMock()
-        existing_job.trigger.interval = timedelta(minutes=RETRY_INTERVAL_MINUTES + 15)
         mock_sched.get_job.return_value = existing_job
         mock_get_scheduler.return_value = mock_sched
         from flight_watcher.scheduler import register_retry_job
