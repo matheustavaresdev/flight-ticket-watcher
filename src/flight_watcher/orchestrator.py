@@ -138,7 +138,7 @@ def run_scan(config: dict) -> None:
     all_dates = sorted(set(outbound_dates + return_dates))
 
     with get_session() as session:
-        # Check for a resumable run from today
+        # Check for a resumable run (last 48h)
         resumable = _find_resumable_run(session, config["id"])
         cursor: date | None = None
 
