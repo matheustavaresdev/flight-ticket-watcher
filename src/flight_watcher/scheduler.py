@@ -102,9 +102,13 @@ def register_scan_job() -> None:
         scheduler.remove_job("daily_scan")
     except JobLookupError:
         pass
-    if scheduler.get_job("scheduled_scan"):
-        logger.info("scheduled_scan job already registered, skipping")
-        return
+    existing = scheduler.get_job("scheduled_scan")
+    if existing is not None:
+        existing_minutes = existing.trigger.interval.total_seconds() / 60
+        if existing_minutes == SCAN_INTERVAL_MINUTES:
+            logger.debug("scan job already scheduled with same interval, skipping re-registration")
+            return
+        # Interval changed — fall through to add_job(replace_existing=True)
     scheduler.add_job(
         run_all_scans,
         trigger="interval",
@@ -128,9 +132,13 @@ def register_retry_job(config_id: int) -> None:
     from flight_watcher.orchestrator import run_retry_scan
 
     scheduler = get_scheduler()
-    if scheduler.get_job(_retry_job_id(config_id)):
-        logger.info("retry job for config %d already registered, skipping", config_id)
-        return
+    existing = scheduler.get_job(_retry_job_id(config_id))
+    if existing is not None:
+        existing_minutes = existing.trigger.interval.total_seconds() / 60
+        if existing_minutes == RETRY_INTERVAL_MINUTES:
+            logger.debug("retry job for config %d already scheduled with same interval, skipping re-registration", config_id)
+            return
+        # Interval changed — fall through to add_job(replace_existing=True)
     scheduler.add_job(
         run_retry_scan,
         trigger="interval",
