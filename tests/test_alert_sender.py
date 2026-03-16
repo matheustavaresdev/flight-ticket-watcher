@@ -1,7 +1,7 @@
 import unittest
 from datetime import date
 from decimal import Decimal
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 SENDER_MODULE = "flight_watcher.alert_sender"
 
@@ -83,8 +83,8 @@ class TestSendAlerts(unittest.TestCase):
         self.assertIsNone(alert1.sent_to)
         self.assertIsNone(alert1.sent_at)
         self.assertIsNone(alert2.sent_to)
-        # Still commits even on failure
-        self.session.commit.assert_called()
+        # No commits when no alerts succeed
+        self.session.commit.assert_not_called()
 
     @patch(f"{SENDER_MODULE}.send_price_alert_email")
     def test_send_alerts_empty_list(self, mock_send):
@@ -95,7 +95,7 @@ class TestSendAlerts(unittest.TestCase):
 
         self.assertEqual(result, 0)
         mock_send.assert_not_called()
-        self.session.commit.assert_called_once()
+        self.session.commit.assert_not_called()
 
 
 if __name__ == "__main__":

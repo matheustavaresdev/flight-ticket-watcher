@@ -18,13 +18,15 @@ def _get_historical_min(
     flight_date: date,
     brand: str,
     exclude_scan_run_id: int,
+    search_config_id: int,
 ) -> Decimal | None:
-    """MIN(price) across all completed scans except the given one."""
+    """MIN(price) across all completed scans for this config except the given one."""
     result = session.execute(
         select(func.min(PriceSnapshot.price))
         .join(ScanRun, PriceSnapshot.scan_run_id == ScanRun.id)
         .where(ScanRun.status == ScanStatus.COMPLETED)
         .where(ScanRun.id != exclude_scan_run_id)
+        .where(ScanRun.search_config_id == search_config_id)
         .where(PriceSnapshot.origin == origin)
         .where(PriceSnapshot.destination == dest)
         .where(PriceSnapshot.flight_date == flight_date)
@@ -40,8 +42,9 @@ def _get_last_alert(
     flight_date: date,
     brand: str,
     alert_type: AlertType,
+    search_config_id: int,
 ) -> PriceAlert | None:
-    """Most recent PriceAlert for route+date+brand+type."""
+    """Most recent PriceAlert for route+date+brand+type scoped to this config."""
     return session.scalars(
         select(PriceAlert)
         .where(PriceAlert.origin == origin)
@@ -49,6 +52,7 @@ def _get_last_alert(
         .where(PriceAlert.flight_date == flight_date)
         .where(PriceAlert.brand == brand)
         .where(PriceAlert.alert_type == alert_type)
+        .where(PriceAlert.search_config_id == search_config_id)
         .order_by(PriceAlert.created_at.desc())
         .limit(1)
     ).first()
@@ -92,13 +96,13 @@ def detect_price_drops(
     for (origin, dest, flight_date, brand), (cheapest_price, flight_code) in groups.items():
         # 3a. Query historical min (exclude current scan)
         historical_min = _get_historical_min(
-            session, origin, dest, flight_date, brand, scan_run_id
+            session, origin, dest, flight_date, brand, scan_run_id, search_config_id
         )
 
         # 3b-c. NEW_LOW alert
         if historical_min is not None and cheapest_price < historical_min:
             last_new_low = _get_last_alert(
-                session, origin, dest, flight_date, brand, AlertType.NEW_LOW
+                session, origin, dest, flight_date, brand, AlertType.NEW_LOW, search_config_id
             )
             if last_new_low is None or cheapest_price < last_new_low.new_price:
                 prev_price = (
@@ -122,13 +126,13 @@ def detect_price_drops(
         # 3d. THRESHOLD alert
         if threshold is not None and cheapest_price < threshold:
             last_threshold = _get_last_alert(
-                session, origin, dest, flight_date, brand, AlertType.THRESHOLD
+                session, origin, dest, flight_date, brand, AlertType.THRESHOLD, search_config_id
             )
             if last_threshold is None or cheapest_price < last_threshold.new_price:
                 prev_price = (
                     last_threshold.new_price
                     if last_threshold
-                    else (historical_min or cheapest_price)
+                    else threshold
                 )
                 alert = PriceAlert(
                     search_config_id=search_config_id,
@@ -139,7 +143,7 @@ def detect_price_drops(
                     brand=brand,
                     previous_low_price=prev_price,
                     new_price=cheapest_price,
-                    price_drop_abs=abs(prev_price - cheapest_price),
+                    price_drop_abs=abs(cheapest_price - threshold),
                     alert_type=AlertType.THRESHOLD,
                 )
                 session.add(alert)

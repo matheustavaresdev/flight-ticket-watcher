@@ -257,6 +257,7 @@ def run_scan(config: dict) -> None:
                         sent,
                     )
             except Exception:
+                session.rollback()
                 logger.exception(
                     "Alert detection failed for scan %d (non-fatal)", scan_run.id
                 )

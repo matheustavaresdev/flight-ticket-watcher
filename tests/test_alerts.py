@@ -2,7 +2,7 @@ import os
 import unittest
 from datetime import date
 from decimal import Decimal
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 ALERTS_MODULE = "flight_watcher.alerts"
 

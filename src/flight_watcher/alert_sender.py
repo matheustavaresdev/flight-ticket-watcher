@@ -14,23 +14,26 @@ def send_alerts(session: Session, alerts: list[PriceAlert]) -> int:
     sent_count = 0
 
     for alert in alerts:
-        alert_data = {
-            "origin": alert.origin,
-            "destination": alert.destination,
-            "flight_date": alert.flight_date,
-            "airline": alert.airline,
-            "brand": alert.brand,
-            "new_price": alert.new_price,
-            "previous_low_price": alert.previous_low_price,
-            "price_drop_abs": alert.price_drop_abs,
-            "alert_type": alert.alert_type.value,
-        }
+        try:
+            alert_data = {
+                "origin": alert.origin,
+                "destination": alert.destination,
+                "flight_date": alert.flight_date,
+                "airline": alert.airline,
+                "brand": alert.brand,
+                "new_price": alert.new_price,
+                "previous_low_price": alert.previous_low_price,
+                "price_drop_abs": alert.price_drop_abs,
+                "alert_type": alert.alert_type.value,
+            }
 
-        success = send_price_alert_email(alert_data)
-        if success:
-            alert.sent_to = ALERT_EMAIL_TO
-            alert.sent_at = datetime.now(tz=timezone.utc)
-            sent_count += 1
+            success = send_price_alert_email(alert_data)
+            if success:
+                alert.sent_to = ALERT_EMAIL_TO
+                alert.sent_at = datetime.now(tz=timezone.utc)
+                sent_count += 1
+                session.commit()
+        except Exception:
+            logger.exception("Failed to send alert id=%s (non-fatal)", getattr(alert, "id", "?"))
 
-    session.commit()
     return sent_count
