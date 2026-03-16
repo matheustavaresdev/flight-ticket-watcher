@@ -399,25 +399,42 @@ class TestFindResumableRun(unittest.TestCase):
         self.assertIsNone(result)
 
     @patch(f"{MODULE}.datetime")
-    def test_find_resumable_run_returns_none_if_from_yesterday(self, mock_dt):
-        """Returns None if the only run was from yesterday."""
-        from flight_watcher.models import ScanStatus
-
+    def test_find_resumable_run_returns_none_if_outside_48h(self, mock_dt):
+        """Returns None if the only run was more than 48 hours ago."""
         mock_dt.now.return_value = datetime(2026, 3, 11, 10, 0, tzinfo=timezone.utc)
         mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
 
         mock_session = MagicMock()
+        # Run started 3 days ago — outside the 48h window; DB returns None
+        mock_session.scalars.return_value.first.return_value = None
+
+        from flight_watcher.orchestrator import _find_resumable_run
+
+        result = _find_resumable_run(mock_session, config_id=1)
+        self.assertIsNone(result)
+
+    @patch(f"{MODULE}.datetime")
+    def test_cross_midnight_resumption_finds_yesterdays_failed_run(self, mock_dt):
+        """Returns a FAILED run started late yesterday (within 48h window)."""
+        from flight_watcher.models import ScanStatus
+
+        # Now: 2026-03-11 00:30 UTC (just past midnight)
+        mock_dt.now.return_value = datetime(2026, 3, 11, 0, 30, tzinfo=timezone.utc)
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+
+        mock_session = MagicMock()
+        # Run started yesterday at 23:55 — 35 minutes ago, well within 48h
         run = _make_scan_run(
-            id=5,
+            id=9,
             status=ScanStatus.FAILED,
-            started_at=datetime(2026, 3, 10, 3, 0, tzinfo=timezone.utc),
+            started_at=datetime(2026, 3, 10, 23, 55, tzinfo=timezone.utc),
         )
         mock_session.scalars.return_value.first.return_value = run
 
         from flight_watcher.orchestrator import _find_resumable_run
 
         result = _find_resumable_run(mock_session, config_id=1)
-        self.assertIsNone(result)
+        self.assertIs(result, run)
 
 
 class TestDatesAfterCursor(unittest.TestCase):
@@ -588,6 +605,75 @@ class TestCursorResumption(unittest.TestCase):
 
         # Only 2026-06-15 and 2026-06-28 remain (2 dates × 2 directions = 4 calls)
         self.assertEqual(mock_search.call_count, 4)
+
+
+class TestStatusCommits(unittest.TestCase):
+    """Verifies that status transitions are persisted with explicit session.commit() calls."""
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}._find_resumable_run", return_value=None)
+    @patch(f"{MODULE}._search_and_store_oneway")
+    @patch(f"{MODULE}.random_delay")
+    @patch(f"{MODULE}.expand_dates")
+    def test_completed_status_is_committed(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
+        """session.commit() is called after COMPLETED status is set (FLI-98)."""
+        from flight_watcher.models import ScanRun, SearchResult
+
+        mock_search.return_value = SearchResult.success(1)
+        mock_expand.return_value = (["2026-06-13"], [])
+        config = _make_config()
+        mock_session = MagicMock()
+
+        def add_side_effect(obj):
+            if isinstance(obj, ScanRun):
+                obj.id = 1
+
+        mock_session.add.side_effect = add_side_effect
+        mock_get_session.return_value.__enter__ = lambda s: mock_session
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        from flight_watcher.orchestrator import run_scan
+
+        run_scan(config)
+
+        # 1 initial ScanRun commit + 1 per-date commit + 1 COMPLETED commit
+        self.assertEqual(mock_session.commit.call_count, 3)
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}._find_resumable_run")
+    @patch(f"{MODULE}._search_and_store_oneway")
+    @patch(f"{MODULE}.random_delay")
+    @patch(f"{MODULE}.expand_dates")
+    def test_resumed_run_commits_running_status(
+        self, mock_expand, mock_delay, mock_search, mock_find, mock_get_session
+    ):
+        """session.commit() is called after transitioning a resumed run to RUNNING (FLI-100)."""
+        from flight_watcher.models import ScanStatus, SearchResult
+
+        mock_search.return_value = SearchResult.success(1)
+        mock_expand.return_value = (["2026-06-13"], [])
+        config = _make_config()
+
+        resumable = _make_scan_run(
+            id=10,
+            status=ScanStatus.FAILED,
+            last_successful_date=None,
+        )
+        mock_find.return_value = resumable
+
+        mock_session = MagicMock()
+        mock_get_session.return_value.__enter__ = lambda s: mock_session
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        from flight_watcher.orchestrator import run_scan
+
+        run_scan(config)
+
+        # 1 RUNNING commit (resumed) + 1 per-date commit + 1 COMPLETED commit
+        self.assertEqual(mock_session.commit.call_count, 3)
+        self.assertEqual(resumable.status, ScanStatus.COMPLETED)
 
 
 class TestSearchAndStoreOneway(unittest.TestCase):
@@ -804,7 +890,7 @@ class TestFailureAwareCursorAdvancement(unittest.TestCase):
     ):
         """When outbound fails with BLOCKED, return search is not attempted."""
         from flight_watcher.errors import ErrorCategory, SearchFailedError
-        from flight_watcher.models import SearchResult, ScanRun
+        from flight_watcher.models import SearchResult
 
         mock_expand.return_value = (["2026-06-13"], ["2026-06-28"])
         mock_search.return_value = SearchResult.failure(

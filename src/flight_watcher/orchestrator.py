@@ -138,7 +138,7 @@ def run_scan(config: dict) -> None:
     all_dates = sorted(set(outbound_dates + return_dates))
 
     with get_session() as session:
-        # Check for a resumable run from today
+        # Check for a resumable run (last 48h)
         resumable = _find_resumable_run(session, config["id"])
         cursor: date | None = None
 
@@ -147,6 +147,7 @@ def run_scan(config: dict) -> None:
             scan_run = resumable
             scan_run.status = ScanStatus.RUNNING
             scan_run.error_message = None
+            session.commit()  # persist RUNNING transition before date loop
             logger.info(
                 "Resuming scan run %d for config %d from cursor %s",
                 scan_run.id,
@@ -239,6 +240,7 @@ def run_scan(config: dict) -> None:
 
             scan_run.status = ScanStatus.COMPLETED
             scan_run.completed_at = datetime.now(tz=timezone.utc)
+            session.commit()  # persist COMPLETED status
             logger.info("Scan run %d completed", scan_run.id)
 
         except Exception as exc:
@@ -254,27 +256,20 @@ def run_scan(config: dict) -> None:
 
 
 def _find_resumable_run(session: Session, config_id: int) -> ScanRun | None:
-    """Find today's failed/running ScanRun for this config to resume from."""
-    today = datetime.now(tz=timezone.utc).date()
-    today_start = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
-    result = session.scalars(
+    """Find a recent failed/running ScanRun for this config to resume from.
+
+    Looks back 48 hours to handle cross-midnight retries where a scan started
+    late the previous day and is being retried the next day.
+    """
+    cutoff = datetime.now(tz=timezone.utc) - timedelta(hours=48)
+    return session.scalars(
         select(ScanRun)
         .where(ScanRun.search_config_id == config_id)
         .where(ScanRun.status.in_([ScanStatus.FAILED, ScanStatus.RUNNING]))
-        .where(ScanRun.started_at >= today_start)
+        .where(ScanRun.started_at >= cutoff)
         .order_by(ScanRun.started_at.desc())
         .limit(1)
     ).first()
-    if result is None:
-        return None
-    run_date = (
-        result.started_at.date()
-        if result.started_at.tzinfo
-        else result.started_at.date()
-    )
-    if run_date == today:
-        return result
-    return None
 
 
 def _dates_after_cursor(dates: list[str], cursor: date | None) -> list[str]:
