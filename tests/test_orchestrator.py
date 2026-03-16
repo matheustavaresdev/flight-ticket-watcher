@@ -361,6 +361,94 @@ class TestRunScan(unittest.TestCase):
         # 2 dates × 2 directions = 4 calls
         self.assertEqual(mock_search.call_count, 4)
 
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}._find_resumable_run", return_value=None)
+    @patch(f"{MODULE}._search_and_store_oneway")
+    @patch(f"{MODULE}.random_delay")
+    @patch(f"{MODULE}.expand_dates")
+    @patch("flight_watcher.alerts.detect_price_drops")
+    @patch("flight_watcher.alert_sender.send_alerts")
+    def test_run_scan_calls_detect_price_drops_on_completion(
+        self,
+        mock_send_alerts,
+        mock_detect,
+        mock_expand,
+        mock_delay,
+        mock_search,
+        mock_find,
+        mock_get_session,
+    ):
+        """detect_price_drops and send_alerts called after scan marked COMPLETED."""
+        from flight_watcher.models import PriceAlert, ScanRun, SearchResult
+
+        mock_search.return_value = SearchResult.success(1)
+        mock_expand.return_value = (["2026-06-13"], ["2026-06-28"])
+        config = _make_config()
+
+        mock_alert = MagicMock(spec=PriceAlert)
+        mock_detect.return_value = [mock_alert]
+        mock_send_alerts.return_value = 1
+
+        mock_session = MagicMock()
+
+        def add_side_effect(obj):
+            if isinstance(obj, ScanRun):
+                obj.id = 42
+
+        mock_session.add.side_effect = add_side_effect
+        mock_get_session.return_value.__enter__ = lambda s: mock_session
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        from flight_watcher.orchestrator import run_scan
+
+        run_scan(config)
+
+        mock_detect.assert_called_once_with(mock_session, 42, config["id"])
+        mock_send_alerts.assert_called_once_with(mock_session, [mock_alert])
+
+    @patch(f"{MODULE}.get_session")
+    @patch(f"{MODULE}._find_resumable_run", return_value=None)
+    @patch(f"{MODULE}._search_and_store_oneway")
+    @patch(f"{MODULE}.random_delay")
+    @patch(f"{MODULE}.expand_dates")
+    @patch("flight_watcher.alerts.detect_price_drops")
+    def test_run_scan_alert_failure_does_not_fail_scan(
+        self,
+        mock_detect,
+        mock_expand,
+        mock_delay,
+        mock_search,
+        mock_find,
+        mock_get_session,
+    ):
+        """detect_price_drops raises → scan still COMPLETED (non-fatal)."""
+        from flight_watcher.models import ScanRun, ScanStatus, SearchResult
+
+        mock_search.return_value = SearchResult.success(1)
+        mock_expand.return_value = (["2026-06-13"], ["2026-06-28"])
+        mock_detect.side_effect = RuntimeError("alert engine exploded")
+        config = _make_config()
+        captured = {}
+
+        mock_session = MagicMock()
+
+        def add_side_effect(obj):
+            if isinstance(obj, ScanRun):
+                obj.id = 1
+                captured["scan_run"] = obj
+
+        mock_session.add.side_effect = add_side_effect
+        mock_get_session.return_value.__enter__ = lambda s: mock_session
+        mock_get_session.return_value.__exit__ = MagicMock(return_value=False)
+
+        from flight_watcher.orchestrator import run_scan
+
+        # Should not raise
+        run_scan(config)
+
+        self.assertIn("scan_run", captured)
+        self.assertEqual(captured["scan_run"].status, ScanStatus.COMPLETED)
+
 
 class TestFindResumableRun(unittest.TestCase):
     @patch(f"{MODULE}.datetime")
