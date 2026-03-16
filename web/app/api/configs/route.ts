@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 export async function GET() {
   try {
     const configs = await prisma.searchConfig.findMany({
+      where: { active: true },
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json({ data: configs });
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
   try {
     const { origin, destination, mustArriveBy, mustStayUntil, maxTripDays } = body;
 
-    if (!origin || !destination || !mustArriveBy || !mustStayUntil || !maxTripDays) {
+    if (!origin || !destination || !mustArriveBy || !mustStayUntil || maxTripDays == null) {
       return NextResponse.json(
         { error: "Missing required fields: origin, destination, mustArriveBy, mustStayUntil, maxTripDays" },
         { status: 400 }

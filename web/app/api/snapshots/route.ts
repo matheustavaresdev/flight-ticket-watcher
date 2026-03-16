@@ -12,10 +12,22 @@ export async function GET(request: NextRequest) {
     const brand = searchParams.get("brand");
 
     const where: Prisma.PriceSnapshotWhereInput = {};
-    if (configId) where.scanRun = { searchConfigId: Number(configId) };
+    if (configId) {
+      const parsedConfigId = parseInt(configId, 10);
+      if (Number.isNaN(parsedConfigId)) {
+        return NextResponse.json({ error: "Invalid configId" }, { status: 400 });
+      }
+      where.scanRun = { searchConfigId: parsedConfigId };
+    }
     if (origin) where.origin = origin;
     if (destination) where.destination = destination;
-    if (flightDate) where.flightDate = new Date(flightDate);
+    if (flightDate) {
+      const parsedFlightDate = new Date(flightDate);
+      if (isNaN(parsedFlightDate.getTime())) {
+        return NextResponse.json({ error: "Invalid flightDate" }, { status: 400 });
+      }
+      where.flightDate = parsedFlightDate;
+    }
     if (brand) where.brand = brand;
 
     const snapshots = await prisma.priceSnapshot.findMany({

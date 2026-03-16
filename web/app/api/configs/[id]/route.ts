@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 export async function GET(
   _request: NextRequest,
@@ -12,7 +13,7 @@ export async function GET(
       return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
     }
     const config = await prisma.searchConfig.findUnique({
-      where: { id: numId },
+      where: { id: numId, active: true },
       include: {
         _count: { select: { scanRuns: true } },
         priceAlerts: { orderBy: { createdAt: "desc" }, take: 1 },
@@ -47,7 +48,7 @@ export async function PUT(
   try {
     const { origin, destination, mustArriveBy, mustStayUntil, maxTripDays } = body;
 
-    if (!origin || !destination || !mustArriveBy || !mustStayUntil || !maxTripDays) {
+    if (!origin || !destination || !mustArriveBy || !mustStayUntil || maxTripDays == null) {
       return NextResponse.json(
         { error: "Missing required fields: origin, destination, mustArriveBy, mustStayUntil, maxTripDays" },
         { status: 400 }
@@ -92,7 +93,10 @@ export async function PUT(
       },
     });
     return NextResponse.json({ data: config });
-  } catch {
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     return NextResponse.json({ error: "Failed to update config" }, { status: 500 });
   }
 }
@@ -112,7 +116,10 @@ export async function DELETE(
       data: { active: false },
     });
     return NextResponse.json({ data: updatedRecord }, { status: 200 });
-  } catch {
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     return NextResponse.json({ error: "Failed to delete config" }, { status: 500 });
   }
 }
