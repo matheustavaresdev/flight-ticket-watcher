@@ -122,3 +122,28 @@ def test_year_boundary():
     assert ret[0] == "2027-01-02"
     assert ret[-1] == "2027-01-09"
     assert len(ret) == 8  # Jan 2–9 inclusive
+
+
+def test_min_trip_days_validation_zero():
+    """min_trip_days=0 raises ValueError."""
+    with pytest.raises(ValueError, match="min_trip_days must be >= 1"):
+        expand_dates(date(2026, 6, 21), date(2026, 6, 28), 15, min_trip_days=0)
+
+
+def test_min_trip_days_validation_negative():
+    """Negative min_trip_days raises ValueError."""
+    with pytest.raises(ValueError, match="min_trip_days must be >= 1"):
+        expand_dates(date(2026, 6, 21), date(2026, 6, 28), 15, min_trip_days=-3)
+
+
+def test_min_trip_days_exceeds_max():
+    """min_trip_days > max_trip_days raises ValueError."""
+    with pytest.raises(ValueError, match="min_trip_days.*must be <= max_trip_days"):
+        expand_dates(date(2026, 6, 21), date(2026, 6, 28), 15, min_trip_days=20)
+
+
+def test_min_trip_days_valid_passes_through():
+    """Valid min_trip_days does not raise and returns date lists."""
+    out, ret = expand_dates(date(2026, 6, 21), date(2026, 6, 28), 15, min_trip_days=7)
+    assert len(out) > 0
+    assert len(ret) > 0

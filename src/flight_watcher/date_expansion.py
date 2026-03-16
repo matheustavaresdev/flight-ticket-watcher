@@ -7,12 +7,13 @@ def expand_dates(
     must_arrive_by: date,
     must_stay_until: date,
     max_trip_days: int,
+    min_trip_days: int | None = None,
 ) -> tuple[list[str], list[str]]:
     """Expand outbound and return date windows given a required stay range.
 
     Given a date by which you must arrive and a date until which you must stay,
     this function produces all valid departure and return dates assuming a trip
-    of at most ``max_trip_days`` days.
+    of at most ``max_trip_days`` days and at least ``min_trip_days`` days (if set).
 
     Args:
         must_arrive_by: Latest date by which the traveler must have arrived at
@@ -21,6 +22,9 @@ def expand_dates(
             stay until at least this date).
         max_trip_days: Maximum total trip duration in days (must be positive
             and >= the minimum stay implied by the inputs).
+        min_trip_days: Minimum trip duration in days (must be >= 1 and <=
+            max_trip_days if provided). Used for validation only; pair
+            filtering is done in generate_pairs().
 
     Returns:
         A 2-tuple ``(outbound_dates, return_dates)`` where each element is a
@@ -33,8 +37,9 @@ def expand_dates(
 
     Raises:
         ValueError: If ``max_trip_days`` is not positive, if
-            ``must_stay_until`` is before ``must_arrive_by``, or if the
-            minimum stay duration exceeds ``max_trip_days``.
+            ``must_stay_until`` is before ``must_arrive_by``, if the
+            minimum stay duration exceeds ``max_trip_days``, or if
+            ``min_trip_days`` is invalid (< 1 or > max_trip_days).
 
     Example:
         >>> from datetime import date
@@ -60,6 +65,14 @@ def expand_dates(
             f"max_trip_days ({max_trip_days})"
         )
 
+    if min_trip_days is not None:
+        if min_trip_days < 1:
+            raise ValueError(f"min_trip_days must be >= 1, got {min_trip_days}")
+        if min_trip_days > max_trip_days:
+            raise ValueError(
+                f"min_trip_days ({min_trip_days}) must be <= max_trip_days ({max_trip_days})"
+            )
+
     earliest_departure = must_stay_until - timedelta(days=max_trip_days)
     latest_return = must_arrive_by + timedelta(days=max_trip_days)
 
@@ -73,6 +86,7 @@ def generate_pairs(
     outbound_dates: list[str],
     return_dates: list[str],
     max_trip_days: int,
+    min_trip_days: int | None = None,
 ) -> list[tuple[str, str]]:
     """Generate all valid (outbound, return) date pairs within the trip duration constraint.
 
@@ -80,11 +94,14 @@ def generate_pairs(
         outbound_dates: List of candidate outbound dates as YYYY-MM-DD strings.
         return_dates: List of candidate return dates as YYYY-MM-DD strings.
         max_trip_days: Maximum trip duration in days (must be positive).
+        min_trip_days: Minimum trip duration in days (inclusive). Pairs shorter
+            than this are excluded. If None, no minimum filter is applied.
 
     Returns:
         Sorted list of (outbound_date, return_date) tuples as YYYY-MM-DD strings.
-        A pair is included when ``return_date >= outbound_date`` and
-        ``(return_date - outbound_date).days <= max_trip_days``.
+        A pair is included when ``return_date >= outbound_date``,
+        ``(return_date - outbound_date).days <= max_trip_days``, and
+        ``(return_date - outbound_date).days >= min_trip_days`` (if set).
 
     Raises:
         ValueError: If ``outbound_dates`` or ``return_dates`` is empty, or if
@@ -102,8 +119,10 @@ def generate_pairs(
         out = date.fromisoformat(out_str)
         for ret_str in return_dates:
             ret = date.fromisoformat(ret_str)
-            if ret >= out and (ret - out).days <= max_trip_days:
-                pairs.append((out_str, ret_str))
+            duration = (ret - out).days
+            if ret >= out and duration <= max_trip_days:
+                if min_trip_days is None or duration >= min_trip_days:
+                    pairs.append((out_str, ret_str))
 
     pairs.sort()
     return pairs

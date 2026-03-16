@@ -14,6 +14,7 @@ def _make_config(
     must_stay_until=date(2026, 6, 28),
     max_trip_days=15,
     active=True,
+    min_trip_days=None,
 ):
     return {
         "id": id,
@@ -22,6 +23,7 @@ def _make_config(
         "must_arrive_by": must_arrive_by,
         "must_stay_until": must_stay_until,
         "max_trip_days": max_trip_days,
+        "min_trip_days": min_trip_days,
     }
 
 
@@ -81,6 +83,7 @@ class TestRunAllScans(unittest.TestCase):
         orm1.must_arrive_by = date(2026, 6, 21)
         orm1.must_stay_until = date(2026, 6, 28)
         orm1.max_trip_days = 15
+        orm1.min_trip_days = None
 
         orm2 = MagicMock()
         orm2.id = 2
@@ -89,6 +92,7 @@ class TestRunAllScans(unittest.TestCase):
         orm2.must_arrive_by = date(2026, 7, 1)
         orm2.must_stay_until = date(2026, 7, 8)
         orm2.max_trip_days = 10
+        orm2.min_trip_days = None
 
         mock_session = MagicMock()
         mock_session.scalars.return_value.all.return_value = [orm1, orm2]
@@ -116,6 +120,7 @@ class TestRunAllScans(unittest.TestCase):
         orm1.must_arrive_by = date(2026, 6, 21)
         orm1.must_stay_until = date(2026, 6, 28)
         orm1.max_trip_days = 15
+        orm1.min_trip_days = None
 
         orm2 = MagicMock()
         orm2.id = 2
@@ -124,6 +129,7 @@ class TestRunAllScans(unittest.TestCase):
         orm2.must_arrive_by = date(2026, 7, 1)
         orm2.must_stay_until = date(2026, 7, 8)
         orm2.max_trip_days = 10
+        orm2.min_trip_days = None
 
         mock_session = MagicMock()
         mock_session.scalars.return_value.all.return_value = [orm1, orm2]
@@ -987,6 +993,7 @@ def _make_config_row(id=1, retry_count=0, needs_attention=False):
     row.must_arrive_by = date(2026, 6, 21)
     row.must_stay_until = date(2026, 6, 28)
     row.max_trip_days = 15
+    row.min_trip_days = None
     row.retry_count = retry_count
     row.needs_attention = needs_attention
     return row

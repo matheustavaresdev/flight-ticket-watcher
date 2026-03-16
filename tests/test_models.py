@@ -32,6 +32,15 @@ class TestSearchConfig:
         index_names = {idx.name for idx in SearchConfig.__table__.indexes}
         assert "ix_search_configs_origin_dest" in index_names
 
+    def test_check_constraints(self):
+        constraint_names = {
+            c.name
+            for c in SearchConfig.__table__.constraints
+            if hasattr(c, "name") and c.name is not None
+        }
+        assert "ck_search_configs_min_trip_days_positive" in constraint_names
+        assert "ck_search_configs_min_le_max_trip_days" in constraint_names
+
 
 class TestScanRun:
     def test_tablename(self):

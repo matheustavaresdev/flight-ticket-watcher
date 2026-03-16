@@ -119,3 +119,38 @@ def test_single_outbound_multiple_return():
     assert ("2026-06-20", "2026-06-25") in pairs
     assert ("2026-06-20", "2026-06-28") in pairs
     assert ("2026-06-20", "2026-07-01") in pairs
+
+
+def test_min_trip_days_filters_short_trips():
+    """Pairs shorter than min_trip_days are excluded."""
+    # outbound June 20, returns June 22 (2d), 25 (5d), 28 (8d). min=5, max=15
+    pairs = generate_pairs(
+        ["2026-06-20"],
+        ["2026-06-22", "2026-06-25", "2026-06-28"],
+        15,
+        min_trip_days=5,
+    )
+    assert ("2026-06-20", "2026-06-22") not in pairs  # 2 days < 5
+    assert ("2026-06-20", "2026-06-25") in pairs      # 5 days == 5
+    assert ("2026-06-20", "2026-06-28") in pairs      # 8 days > 5
+
+
+def test_min_trip_days_none_no_filtering():
+    """min_trip_days=None behaves identically to no min constraint."""
+    pairs_default = generate_pairs(["2026-06-20"], ["2026-06-22", "2026-06-28"], 15)
+    pairs_none = generate_pairs(
+        ["2026-06-20"], ["2026-06-22", "2026-06-28"], 15, min_trip_days=None
+    )
+    assert pairs_default == pairs_none
+
+
+def test_min_trip_days_equals_max_trip_days():
+    """When min_trip_days == max_trip_days, only exact-duration pairs remain."""
+    # outbound June 20, returns June 25 (5d), 27 (7d), 28 (8d). min=max=7
+    pairs = generate_pairs(
+        ["2026-06-20"],
+        ["2026-06-25", "2026-06-27", "2026-06-28"],
+        7,
+        min_trip_days=7,
+    )
+    assert pairs == [("2026-06-20", "2026-06-27")]  # only exactly 7 days

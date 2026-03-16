@@ -1,5 +1,7 @@
 """Config subcommands: list, add, toggle."""
 
+from typing import Annotated
+
 import typer
 from sqlalchemy import select
 
@@ -18,6 +20,7 @@ def config_add(
     must_arrive_by: str = typer.Argument(..., help="Must arrive by date (YYYY-MM-DD)"),
     must_stay_until: str = typer.Argument(..., help="Must stay until date (YYYY-MM-DD)"),
     max_days: int = typer.Option(..., "--max-days", help="Maximum trip duration in days."),
+    min_days: Annotated[int | None, typer.Option("--min-days", help="Minimum trip duration in days.")] = None,
 ) -> None:
     """Add a new search configuration."""
     origin = parse_iata(origin)
@@ -26,12 +29,12 @@ def config_add(
     stay_until = parse_date(must_stay_until)
 
     try:
-        outbound_dates, return_dates = expand_dates(arrive_by, stay_until, max_days)
+        outbound_dates, return_dates = expand_dates(arrive_by, stay_until, max_days, min_days)
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
 
-    pair_count = len(generate_pairs(outbound_dates, return_dates, max_days))
+    pair_count = len(generate_pairs(outbound_dates, return_dates, max_days, min_days))
 
     search_config = SearchConfig(
         origin=origin,
@@ -39,6 +42,7 @@ def config_add(
         must_arrive_by=arrive_by,
         must_stay_until=stay_until,
         max_trip_days=max_days,
+        min_trip_days=min_days,
         active=True,
     )
 
@@ -47,9 +51,10 @@ def config_add(
         session.flush()
         config_id = search_config.id
 
+    min_days_part = f", min {min_days} days" if min_days is not None else ""
     typer.echo(
         f"Added config #{config_id}: {origin} \u2192 {destination} "
-        f"(arrive by {arrive_by}, stay until {stay_until}, max {max_days} days). "
+        f"(arrive by {arrive_by}, stay until {stay_until}, max {max_days} days{min_days_part}). "
         f"{pair_count} date pairs generated."
     )
     typer.echo("[OK]")
@@ -66,14 +71,15 @@ def config_list(
             stmt = stmt.where(SearchConfig.active.is_(True))
         configs = session.execute(stmt).scalars().all()
 
-    header = f"{'ID':>4}  {'Origin':<8}  {'Dest':<6}  {'Arrive By':<12}  {'Stay Until':<12}  {'Max Days':>8}  {'Active':<6}"
+    header = f"{'ID':>4}  {'Origin':<8}  {'Dest':<6}  {'Arrive By':<12}  {'Stay Until':<12}  {'Max Days':>8}  {'Min Days':>8}  {'Active':<6}"
     typer.echo(header)
     typer.echo("-" * len(header))
     for cfg in configs:
+        min_days_val = str(cfg.min_trip_days) if cfg.min_trip_days is not None else "-"
         typer.echo(
             f"{cfg.id:>4}  {cfg.origin:<8}  {cfg.destination:<6}  "
             f"{str(cfg.must_arrive_by):<12}  {str(cfg.must_stay_until):<12}  "
-            f"{cfg.max_trip_days:>8}  {'Yes' if cfg.active else 'No':<6}"
+            f"{cfg.max_trip_days:>8}  {min_days_val:>8}  {'Yes' if cfg.active else 'No':<6}"
         )
     typer.echo("[OK]")
 
