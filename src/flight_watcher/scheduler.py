@@ -13,7 +13,7 @@ from flight_watcher.scanner_state import ScannerStatus, get_scanner_state
 
 logger = logging.getLogger(__name__)
 
-SCAN_HOUR_UTC = int(os.environ.get("SCAN_HOUR_UTC", "3"))
+SCAN_INTERVAL_MINUTES = int(os.environ.get("SCAN_INTERVAL_MINUTES", "60"))
 RETRY_MAX_ATTEMPTS = int(os.environ.get("RETRY_MAX_ATTEMPTS", "24"))
 RETRY_INTERVAL_MINUTES = int(os.environ.get("RETRY_INTERVAL_MINUTES", "60"))
 
@@ -93,20 +93,21 @@ def stop_scheduler() -> None:
 
 
 def register_scan_job() -> None:
-    """Register the daily scan job with the scheduler."""
+    """Register the periodic scan job with the scheduler."""
     from flight_watcher.orchestrator import run_all_scans
 
     scheduler = get_scheduler()
     scheduler.add_job(
         run_all_scans,
-        trigger="cron",
-        hour=SCAN_HOUR_UTC,
-        id="daily_scan",
+        trigger="interval",
+        minutes=SCAN_INTERVAL_MINUTES,
+        id="scheduled_scan",
         replace_existing=True,
-        jitter=1800,
+        max_instances=1,
+        misfire_grace_time=300,
     )
     logger.info(
-        "Registered daily_scan job at hour=%d UTC (±30min jitter)", SCAN_HOUR_UTC
+        "Registered scheduled_scan job (every %d min)", SCAN_INTERVAL_MINUTES
     )
 
 
