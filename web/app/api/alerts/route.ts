@@ -10,7 +10,13 @@ export async function GET(request: NextRequest) {
     const destination = searchParams.get("destination");
 
     const where: Prisma.PriceAlertWhereInput = {};
-    if (configId) where.searchConfigId = Number(configId);
+    if (configId) {
+      const numConfigId = Number(configId);
+      if (Number.isNaN(numConfigId)) {
+        return NextResponse.json({ error: "Invalid configId" }, { status: 400 });
+      }
+      where.searchConfigId = numConfigId;
+    }
     if (origin) where.origin = origin;
     if (destination) where.destination = destination;
 

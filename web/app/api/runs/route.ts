@@ -9,7 +9,13 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status");
 
     const where: Prisma.ScanRunWhereInput = {};
-    if (configId) where.searchConfigId = Number(configId);
+    if (configId) {
+      const numConfigId = Number(configId);
+      if (Number.isNaN(numConfigId)) {
+        return NextResponse.json({ error: "Invalid configId" }, { status: 400 });
+      }
+      where.searchConfigId = numConfigId;
+    }
     if (status) where.status = status;
 
     const runs = await prisma.scanRun.findMany({

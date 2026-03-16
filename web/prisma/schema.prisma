@@ -30,7 +30,7 @@ model SearchConfig {
 model ScanRun {
   id                  Int       @id @default(autoincrement())
   searchConfigId      Int       @map("search_config_id")
-  startedAt           DateTime  @map("started_at") @db.Timestamptz
+  startedAt           DateTime  @default(now()) @map("started_at") @db.Timestamptz
   completedAt         DateTime? @map("completed_at") @db.Timestamptz
   status              String    @db.VarChar
   lastSuccessfulDate  DateTime? @map("last_successful_date") @db.Date
@@ -83,9 +83,10 @@ model PriceAlert {
   alertType        String    @map("alert_type") @db.VarChar
   sentTo           String?   @map("sent_to") @db.VarChar(255)
   sentAt           DateTime? @map("sent_at") @db.Timestamptz
-  createdAt        DateTime  @map("created_at") @db.Timestamptz
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
   searchConfig SearchConfig @relation(fields: [searchConfigId], references: [id])
 
+  @@index([origin, destination, flightDate, brand])
   @@map("price_alerts")
 }
