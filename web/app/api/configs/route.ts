@@ -47,20 +47,41 @@ export async function POST(request: NextRequest) {
     if (isNaN(arriveByDate.getTime())) {
       return NextResponse.json({ error: "mustArriveBy must be a valid date" }, { status: 400 });
     }
+    if (arriveByDate.toISOString().slice(0, 10) !== String(mustArriveBy)) {
+      return NextResponse.json({ error: "Invalid mustArriveBy date" }, { status: 400 });
+    }
     if (isNaN(stayUntilDate.getTime())) {
       return NextResponse.json({ error: "mustStayUntil must be a valid date" }, { status: 400 });
     }
+    if (stayUntilDate.toISOString().slice(0, 10) !== String(mustStayUntil)) {
+      return NextResponse.json({ error: "Invalid mustStayUntil date" }, { status: 400 });
+    }
     if (stayUntilDate < arriveByDate) {
       return NextResponse.json({ error: "mustStayUntil must be >= mustArriveBy" }, { status: 400 });
+    }
+    const stayDays = Math.round(
+      (stayUntilDate.getTime() - arriveByDate.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    if (stayDays > parsedMaxTripDays) {
+      return NextResponse.json({ error: "Stay window exceeds maxTripDays" }, { status: 400 });
     }
     if (parsedMaxTripDays < 1) {
       return NextResponse.json({ error: "maxTripDays must be >= 1" }, { status: 400 });
     }
 
+    const normalizedOrigin = String(origin).trim().toUpperCase();
+    const normalizedDestination = String(destination).trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(normalizedOrigin)) {
+      return NextResponse.json({ error: "Invalid origin airport code" }, { status: 400 });
+    }
+    if (!/^[A-Z]{3}$/.test(normalizedDestination)) {
+      return NextResponse.json({ error: "Invalid destination airport code" }, { status: 400 });
+    }
+
     const config = await prisma.searchConfig.create({
       data: {
-        origin: String(origin),
-        destination: String(destination),
+        origin: normalizedOrigin,
+        destination: normalizedDestination,
         mustArriveBy: arriveByDate,
         mustStayUntil: stayUntilDate,
         maxTripDays: parsedMaxTripDays,
