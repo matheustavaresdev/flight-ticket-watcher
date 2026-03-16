@@ -91,6 +91,7 @@ class SearchConfig(Base):
     must_arrive_by: Mapped[date] = mapped_column(Date, nullable=False)
     must_stay_until: Mapped[date] = mapped_column(Date, nullable=False)
     max_trip_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    min_trip_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     retry_count: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"
