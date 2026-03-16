@@ -400,7 +400,7 @@ class TestFindResumableRun(unittest.TestCase):
 
     @patch(f"{MODULE}.datetime")
     def test_find_resumable_run_returns_none_if_outside_48h(self, mock_dt):
-        """Returns None if the only run was more than 48 hours ago."""
+        """Returns None if the only run was more than 48 hours ago; verifies 48h cutoff is applied."""
         mock_dt.now.return_value = datetime(2026, 3, 11, 10, 0, tzinfo=timezone.utc)
         mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
 
@@ -412,6 +412,40 @@ class TestFindResumableRun(unittest.TestCase):
 
         result = _find_resumable_run(mock_session, config_id=1)
         self.assertIsNone(result)
+
+        # Verify the query was built with the correct 48h cutoff, not just mock wiring
+        stmt = mock_session.scalars.call_args[0][0]
+        compiled = stmt.compile()
+        expected_cutoff = datetime(2026, 3, 9, 10, 0, tzinfo=timezone.utc)
+        self.assertIn(expected_cutoff, compiled.params.values())
+
+    @patch(f"{MODULE}.datetime")
+    def test_find_resumable_run_includes_exactly_48h_boundary(self, mock_dt):
+        """Run started exactly 48h ago is found (>= boundary is inclusive)."""
+        from flight_watcher.models import ScanStatus
+
+        mock_dt.now.return_value = datetime(2026, 3, 11, 10, 0, tzinfo=timezone.utc)
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+
+        mock_session = MagicMock()
+        # Run started exactly 48h ago — should be found (>= cutoff is inclusive)
+        run = _make_scan_run(
+            id=10,
+            status=ScanStatus.FAILED,
+            started_at=datetime(2026, 3, 9, 10, 0, tzinfo=timezone.utc),
+        )
+        mock_session.scalars.return_value.first.return_value = run
+
+        from flight_watcher.orchestrator import _find_resumable_run
+
+        result = _find_resumable_run(mock_session, config_id=1)
+        self.assertIs(result, run)
+
+        # Verify the query cutoff equals exactly 48h ago
+        stmt = mock_session.scalars.call_args[0][0]
+        compiled = stmt.compile()
+        expected_cutoff = datetime(2026, 3, 9, 10, 0, tzinfo=timezone.utc)
+        self.assertIn(expected_cutoff, compiled.params.values())
 
     @patch(f"{MODULE}.datetime")
     def test_cross_midnight_resumption_finds_yesterdays_failed_run(self, mock_dt):

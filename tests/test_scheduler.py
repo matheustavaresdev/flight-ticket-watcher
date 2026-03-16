@@ -173,6 +173,7 @@ class TestRegisterScanJob(unittest.TestCase):
     def test_register_scan_job_adds_interval_trigger(self, mock_get_scheduler):
         """Verifies scheduler.add_job called with interval trigger and correct params."""
         mock_sched = MagicMock()
+        mock_sched.get_job.return_value = None  # job doesn't exist yet
         mock_get_scheduler.return_value = mock_sched
 
         from flight_watcher.scheduler import register_scan_job
@@ -189,6 +190,7 @@ class TestRegisterScanJob(unittest.TestCase):
     def test_register_scan_job_uses_scan_interval_minutes(self, mock_get_scheduler):
         """Verifies SCAN_INTERVAL_MINUTES env var is passed to interval trigger."""
         mock_sched = MagicMock()
+        mock_sched.get_job.return_value = None  # job doesn't exist yet
         mock_get_scheduler.return_value = mock_sched
 
         import os
@@ -206,6 +208,7 @@ class TestRegisterScanJob(unittest.TestCase):
     def test_register_scan_job_default_interval_is_60(self, mock_get_scheduler):
         """Verifies default scan interval is 60 minutes."""
         mock_sched = MagicMock()
+        mock_sched.get_job.return_value = None  # job doesn't exist yet
         mock_get_scheduler.return_value = mock_sched
 
         from flight_watcher.scheduler import register_scan_job, SCAN_INTERVAL_MINUTES
@@ -213,6 +216,48 @@ class TestRegisterScanJob(unittest.TestCase):
 
         call_kwargs = mock_sched.add_job.call_args[1]
         self.assertEqual(call_kwargs["minutes"], SCAN_INTERVAL_MINUTES)
+
+    @patch(f"{SCHED_MODULE}.get_scheduler")
+    def test_register_scan_job_skips_if_already_exists(self, mock_get_scheduler):
+        """Verifies add_job is not called when scheduled_scan job already exists."""
+        mock_sched = MagicMock()
+        mock_sched.get_job.return_value = MagicMock()  # job already exists
+        mock_get_scheduler.return_value = mock_sched
+
+        from flight_watcher.scheduler import register_scan_job
+
+        register_scan_job()
+
+        mock_sched.add_job.assert_not_called()
+
+    @patch(f"{SCHED_MODULE}.get_scheduler")
+    def test_register_scan_job_adds_if_not_exists(self, mock_get_scheduler):
+        """Verifies add_job is called when scheduled_scan job does not exist."""
+        mock_sched = MagicMock()
+        mock_sched.get_job.return_value = None
+        mock_get_scheduler.return_value = mock_sched
+
+        from flight_watcher.scheduler import register_scan_job
+
+        register_scan_job()
+
+        mock_sched.add_job.assert_called_once()
+
+    @patch(f"{SCHED_MODULE}.get_scheduler")
+    def test_register_scan_job_migration_catches_job_lookup_error(self, mock_get_scheduler):
+        """Verifies JobLookupError (not bare Exception) is caught in migration block."""
+        from apscheduler.jobstores.base import JobLookupError
+
+        mock_sched = MagicMock()
+        mock_sched.get_job.return_value = None
+        mock_sched.remove_job.side_effect = JobLookupError("daily_scan")
+        mock_get_scheduler.return_value = mock_sched
+
+        from flight_watcher.scheduler import register_scan_job
+
+        # Should not raise — JobLookupError is caught in the migration block
+        register_scan_job()
+        mock_sched.add_job.assert_called_once()
 
 
 class TestJobListenerStateSideEffects(unittest.TestCase):
@@ -303,6 +348,7 @@ class TestRegisterRetryJob(unittest.TestCase):
     @patch(f"{SCHED_MODULE}.get_scheduler")
     def test_register_retry_job_adds_interval_trigger(self, mock_get_scheduler):
         mock_sched = MagicMock()
+        mock_sched.get_job.return_value = None  # job doesn't exist yet
         mock_get_scheduler.return_value = mock_sched
         from flight_watcher.scheduler import register_retry_job
 
@@ -317,12 +363,24 @@ class TestRegisterRetryJob(unittest.TestCase):
     @patch(f"{SCHED_MODULE}.get_scheduler")
     def test_register_retry_job_logs_info(self, mock_get_scheduler):
         mock_sched = MagicMock()
+        mock_sched.get_job.return_value = None  # job doesn't exist yet
         mock_get_scheduler.return_value = mock_sched
         from flight_watcher.scheduler import register_retry_job
 
         with self.assertLogs("flight_watcher.scheduler", level="INFO") as cm:
             register_retry_job(7)
         self.assertTrue(any("7" in line for line in cm.output))
+
+    @patch(f"{SCHED_MODULE}.get_scheduler")
+    def test_register_retry_job_skips_if_already_exists(self, mock_get_scheduler):
+        """Verifies add_job is not called when retry job already exists."""
+        mock_sched = MagicMock()
+        mock_sched.get_job.return_value = MagicMock()  # job already exists
+        mock_get_scheduler.return_value = mock_sched
+        from flight_watcher.scheduler import register_retry_job
+
+        register_retry_job(5)
+        mock_sched.add_job.assert_not_called()
 
 
 class TestCancelRetryJob(unittest.TestCase):

@@ -94,13 +94,17 @@ def stop_scheduler() -> None:
 
 def register_scan_job() -> None:
     """Register the periodic scan job with the scheduler."""
+    from apscheduler.jobstores.base import JobLookupError
     from flight_watcher.orchestrator import run_all_scans
 
     scheduler = get_scheduler()
     try:
         scheduler.remove_job("daily_scan")
-    except Exception:
+    except JobLookupError:
         pass
+    if scheduler.get_job("scheduled_scan"):
+        logger.info("scheduled_scan job already registered, skipping")
+        return
     scheduler.add_job(
         run_all_scans,
         trigger="interval",
@@ -124,6 +128,9 @@ def register_retry_job(config_id: int) -> None:
     from flight_watcher.orchestrator import run_retry_scan
 
     scheduler = get_scheduler()
+    if scheduler.get_job(_retry_job_id(config_id)):
+        logger.info("retry job for config %d already registered, skipping", config_id)
+        return
     scheduler.add_job(
         run_retry_scan,
         trigger="interval",
