@@ -115,6 +115,28 @@ class TestSendPriceAlertEmail(unittest.TestCase):
     @patch(f"{MAILER_MODULE}.SMTP_USERNAME", "")
     @patch(f"{MAILER_MODULE}.SMTP_PASSWORD", "")
     @patch(f"{MAILER_MODULE}.smtplib.SMTP")
+    def test_send_price_alert_email_no_auth(self, mock_smtp_cls, *args):
+        mock_server = MagicMock()
+        mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_server)
+        mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        from flight_watcher.mailer import send_price_alert_email
+
+        result = send_price_alert_email(_SAMPLE_ALERT)
+
+        self.assertTrue(result)
+        mock_server.starttls.assert_called_once()
+        mock_server.login.assert_not_called()
+        mock_server.send_message.assert_called_once()
+
+    @patch(f"{MAILER_MODULE}.is_email_configured", return_value=True)
+    @patch(f"{MAILER_MODULE}.SMTP_HOST", "smtp.gmail.com")
+    @patch(f"{MAILER_MODULE}.SMTP_PORT", 587)
+    @patch(f"{MAILER_MODULE}.SMTP_FROM", "alerts@example.com")
+    @patch(f"{MAILER_MODULE}.ALERT_EMAIL_TO", "me@example.com")
+    @patch(f"{MAILER_MODULE}.SMTP_USERNAME", "")
+    @patch(f"{MAILER_MODULE}.SMTP_PASSWORD", "")
+    @patch(f"{MAILER_MODULE}.smtplib.SMTP")
     def test_send_price_alert_email_connection_refused(self, mock_smtp_cls, *args):
         mock_smtp_cls.side_effect = ConnectionRefusedError("Connection refused")
 
@@ -145,6 +167,28 @@ class TestBuildAlertHtml(unittest.TestCase):
         html = _build_alert_html(_SAMPLE_ALERT)
 
         self.assertIn("google.com/travel/flights", html)
+
+    def test_build_alert_html_partial_7d_stats(self):
+        from flight_watcher.mailer import _build_alert_html
+
+        alert_data = {**_SAMPLE_ALERT, "avg_7d": "500.00"}
+        html = _build_alert_html(alert_data)
+
+        self.assertIn("500.00", html)
+        self.assertIn("N/A", html)
+        self.assertNotIn(">None<", html)
+        self.assertNotIn("R$ None", html)
+
+    def test_build_alert_html_all_7d_stats(self):
+        from flight_watcher.mailer import _build_alert_html
+
+        alert_data = {**_SAMPLE_ALERT, "avg_7d": "500.00", "high_7d": "650.00", "low_7d": "420.00"}
+        html = _build_alert_html(alert_data)
+
+        self.assertIn("500.00", html)
+        self.assertIn("650.00", html)
+        self.assertIn("420.00", html)
+        self.assertNotIn("N/A", html)
 
 
 class TestBuildGoogleFlightsLink(unittest.TestCase):
