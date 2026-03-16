@@ -38,6 +38,7 @@ def run_all_scans() -> None:
                 "must_arrive_by": r.must_arrive_by,
                 "must_stay_until": r.must_stay_until,
                 "max_trip_days": r.max_trip_days,
+                "min_trip_days": r.min_trip_days,
                 "retry_count": r.retry_count,
             }
             for r in rows
@@ -88,6 +89,7 @@ def run_retry_scan(config_id: int) -> None:
             "must_arrive_by": config_row.must_arrive_by,
             "must_stay_until": config_row.must_stay_until,
             "max_trip_days": config_row.max_trip_days,
+            "min_trip_days": config_row.min_trip_days,
         }
 
     try:
@@ -133,7 +135,8 @@ def run_scan(config: dict) -> None:
                 prevents DetachedInstanceError after the loading session closes.
     """
     outbound_dates, return_dates = expand_dates(
-        config["must_arrive_by"], config["must_stay_until"], config["max_trip_days"]
+        config["must_arrive_by"], config["must_stay_until"], config["max_trip_days"],
+        config.get("min_trip_days"),
     )
     all_dates = sorted(set(outbound_dates + return_dates))
 

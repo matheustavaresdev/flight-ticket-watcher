@@ -1,5 +1,7 @@
 """Config subcommands: list, add, toggle."""
 
+from typing import Annotated
+
 import typer
 from sqlalchemy import select
 
@@ -18,6 +20,7 @@ def config_add(
     must_arrive_by: str = typer.Argument(..., help="Must arrive by date (YYYY-MM-DD)"),
     must_stay_until: str = typer.Argument(..., help="Must stay until date (YYYY-MM-DD)"),
     max_days: int = typer.Option(..., "--max-days", help="Maximum trip duration in days."),
+    min_days: Annotated[int | None, typer.Option("--min-days", help="Minimum trip duration in days.")] = None,
 ) -> None:
     """Add a new search configuration."""
     origin = parse_iata(origin)
@@ -26,12 +29,12 @@ def config_add(
     stay_until = parse_date(must_stay_until)
 
     try:
-        outbound_dates, return_dates = expand_dates(arrive_by, stay_until, max_days)
+        outbound_dates, return_dates = expand_dates(arrive_by, stay_until, max_days, min_days)
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
 
-    pair_count = len(generate_pairs(outbound_dates, return_dates, max_days))
+    pair_count = len(generate_pairs(outbound_dates, return_dates, max_days, min_days))
 
     search_config = SearchConfig(
         origin=origin,
@@ -39,6 +42,7 @@ def config_add(
         must_arrive_by=arrive_by,
         must_stay_until=stay_until,
         max_trip_days=max_days,
+        min_trip_days=min_days,
         active=True,
     )
 

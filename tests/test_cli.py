@@ -187,6 +187,68 @@ class TestConfigAdd:
         assert added_obj.origin == "FOR"
         assert added_obj.destination == "MIA"
 
+    def test_config_add_with_min_days(self):
+        runner = CliRunner()
+        get_session_mock, session_mock = make_session_mock()
+
+        def flush_side_effect():
+            call_args = session_mock.add.call_args
+            if call_args:
+                call_args[0][0].id = 10
+
+        session_mock.flush.side_effect = flush_side_effect
+
+        with patch("flight_watcher.cli.config.get_session", get_session_mock):
+            result = runner.invoke(
+                app,
+                [
+                    "config",
+                    "add",
+                    "FOR",
+                    "MIA",
+                    "2026-06-21",
+                    "2026-06-28",
+                    "--max-days",
+                    "15",
+                    "--min-days",
+                    "7",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        added_obj = session_mock.add.call_args[0][0]
+        assert added_obj.min_trip_days == 7
+
+    def test_config_add_without_min_days(self):
+        runner = CliRunner()
+        get_session_mock, session_mock = make_session_mock()
+
+        def flush_side_effect():
+            call_args = session_mock.add.call_args
+            if call_args:
+                call_args[0][0].id = 11
+
+        session_mock.flush.side_effect = flush_side_effect
+
+        with patch("flight_watcher.cli.config.get_session", get_session_mock):
+            result = runner.invoke(
+                app,
+                [
+                    "config",
+                    "add",
+                    "FOR",
+                    "MIA",
+                    "2026-06-21",
+                    "2026-06-28",
+                    "--max-days",
+                    "15",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        added_obj = session_mock.add.call_args[0][0]
+        assert added_obj.min_trip_days is None
+
 
 class TestConfigList:
     def _make_config(

@@ -8,6 +8,7 @@ from flight_watcher.errors import ErrorCategory
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Enum,
@@ -117,7 +118,17 @@ class SearchConfig(Base):
     scan_runs: Mapped[list["ScanRun"]] = relationship(back_populates="search_config")
     price_alerts: Mapped[list["PriceAlert"]] = relationship(back_populates="search_config")
 
-    __table_args__ = (Index("ix_search_configs_origin_dest", "origin", "destination"),)
+    __table_args__ = (
+        Index("ix_search_configs_origin_dest", "origin", "destination"),
+        CheckConstraint(
+            "min_trip_days IS NULL OR min_trip_days >= 1",
+            name="ck_search_configs_min_trip_days_positive",
+        ),
+        CheckConstraint(
+            "min_trip_days IS NULL OR min_trip_days <= max_trip_days",
+            name="ck_search_configs_min_le_max_trip_days",
+        ),
+    )
 
 
 class ScanRun(Base):
