@@ -34,6 +34,7 @@ def send_alerts(session: Session, alerts: list[PriceAlert]) -> int:
                 sent_count += 1
                 session.commit()
         except Exception:
+            session.rollback()
             logger.exception("Failed to send alert id=%s (non-fatal)", getattr(alert, "id", "?"))
 
     return sent_count
