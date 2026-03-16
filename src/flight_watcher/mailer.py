@@ -12,9 +12,11 @@ SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 SMTP_FROM = os.environ.get("SMTP_FROM", "")
 ALERT_EMAIL_TO = os.environ.get("ALERT_EMAIL_TO", "")
-ALERT_THRESHOLD_BRL = os.environ.get("ALERT_THRESHOLD_BRL", "")
 
 
+# Checks transport config only (host, from address, destination address).
+# Auth credentials (SMTP_USERNAME / SMTP_PASSWORD) are intentionally excluded:
+# unauthenticated SMTP relays are supported — login is skipped when both are empty.
 def is_email_configured() -> bool:
     return bool(SMTP_HOST and SMTP_FROM and ALERT_EMAIL_TO)
 
@@ -51,7 +53,7 @@ def _build_alert_html(alert_data: dict) -> str:
         <tr>
           <td colspan="2" style="padding-top:16px;">
             <strong>7-day stats</strong><br>
-            Avg: R$ {avg_7d} &nbsp; High: R$ {high_7d} &nbsp; Low: R$ {low_7d}
+            Avg: R$ {avg_7d if avg_7d is not None else 'N/A'} &nbsp; High: R$ {high_7d if high_7d is not None else 'N/A'} &nbsp; Low: R$ {low_7d if low_7d is not None else 'N/A'}
           </td>
         </tr>"""
 
