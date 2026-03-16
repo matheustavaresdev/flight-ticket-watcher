@@ -243,6 +243,24 @@ def run_scan(config: dict) -> None:
             session.commit()  # persist COMPLETED status
             logger.info("Scan run %d completed", scan_run.id)
 
+            try:
+                from flight_watcher.alerts import detect_price_drops
+                from flight_watcher.alert_sender import send_alerts
+                alerts = detect_price_drops(session, scan_run.id, config["id"])
+                if alerts:
+                    session.commit()  # persist PriceAlert records
+                    sent = send_alerts(session, alerts)
+                    logger.info(
+                        "Scan %d: %d alert(s) created, %d sent",
+                        scan_run.id,
+                        len(alerts),
+                        sent,
+                    )
+            except Exception:
+                logger.exception(
+                    "Alert detection failed for scan %d (non-fatal)", scan_run.id
+                )
+
         except Exception as exc:
             session.rollback()  # discard uncommitted in-progress date work
             scan_run.status = ScanStatus.FAILED
